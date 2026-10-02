@@ -1,0 +1,19 @@
+{
+  "1": {
+    "id": 1,
+    "first_name": "Med Amine",
+    "last_name": "EL ANSARI",
+    "phone": "987654321",
+    "email": "amine@gmail.com",
+    "date_of_birth": "2025-11-30",
+    "gender": "male",
+    "address": "err",
+    "allergies": null,
+    "medical_history": null,
+    "medications": null,
+    "emergency_contact": null,
+    "emergency_phone": null,
+    "notes": null,
+    "created_at": "2025-11-30T10:51:48.440710700+00:00"
+  }
+}
