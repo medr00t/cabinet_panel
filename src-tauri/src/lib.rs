@@ -1,7 +1,9 @@
 mod backup;
 mod cnss;
 mod config;
+mod dbserver;
 mod ledger;
+mod onboarding;
 mod printing;
 
 use serde::{Deserialize, Serialize};
@@ -567,8 +569,7 @@ async fn get_payments_by_date(date: String, db_url: String) -> Result<Vec<Paymen
 
 fn staff_name(id: i64) -> String {
     config::get().ok()
-        .and_then(|c| c.users.iter().find(|u| u.id == id))
-        .map(|u| u.name.clone())
+        .and_then(|c| c.users.iter().find(|u| u.id == id).map(|u| u.name.clone()))
         .unwrap_or_else(|| format!("Utilisateur {}", id))
 }
 
@@ -632,8 +633,8 @@ async fn get_daily_summary_all_staff(date: String, db_url: String) -> Result<Vec
 
 #[tauri::command]
 fn verify_doctor_answer(answer: String) -> Result<bool, String> {
-    let expected = &config::get()?.doctor_security_answer;
-    Ok(answer.trim().to_lowercase() == expected.trim().to_lowercase())
+    let cfg = config::get()?;
+    Ok(answer.trim().to_lowercase() == cfg.doctor_security_answer.trim().to_lowercase())
 }
 
 /// French label of a tooth state (as shown on the chart), for exports.
@@ -718,10 +719,17 @@ async fn reconnect_database(code: String, host: Option<String>) -> Result<AuthRe
 // App configuration  
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Started at Windows login to keep the cabinet database up: no window, just the database.
+    if std::env::args().any(|a| a == "--db-only") {
+        let _ = dbserver::start_if_needed();
+        return;
+    }
     tauri::Builder::default()
         .setup(|app| {
             use tauri::Manager;
             config::load(app.path().app_config_dir()?);
+            // the database of this laptop (if it hosts one) comes up with the app
+            std::thread::spawn(|| { let _ = dbserver::start_if_needed(); });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -763,7 +771,14 @@ pub fn run() {
             cnss::delete_cnss_sheet,
             cnss::get_settings,
             cnss::set_setting,
-            printing::open_pdf
+            printing::open_pdf,
+            onboarding::setup_status,
+            onboarding::setup_save_config,
+            onboarding::server_install,
+            onboarding::server_start,
+            onboarding::setup_find_backups,
+            onboarding::setup_restore,
+            onboarding::client_check
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1026,7 +1041,7 @@ mod tests {
     }
 
     /// Every table of a database as text rows, in a stable order. `null` is what a NULL becomes.
-    fn snapshot(conn: &mut PooledConn, null: &str) -> Vec<(String, Vec<Vec<String>>)> {
+    fn snapshot(conn: &mut Conn, null: &str) -> Vec<(String, Vec<Vec<String>>)> {
         [("patients", "id"), ("appointments", "id"), ("treatments", "id"), ("payments", "id"),
          ("tooth_marks", "patient_id, tooth"), ("cnss_sheets", "id"), ("settings", "name")]
             .iter().map(|(t, order)| {
@@ -1058,7 +1073,7 @@ mod tests {
         load_config();
         let root = Pool::new(format!("mysql://root:{}@localhost/", root_pw).as_str()).unwrap();
         let (src, dst) = (scratch_db(&root, "cabinet_src_test"), scratch_db(&root, "cabinet_dst_test"));
-        let mut src_conn = Pool::new(src.as_str()).unwrap().get_conn().unwrap();
+        let mut src_conn = Conn::new(src.as_str()).unwrap();
         backup::ensure_schema(&mut src_conn).unwrap();
 
         // a database full of awkward values: quotes, backslashes, line breaks, accents, emoji, NULL vs ''
@@ -1087,7 +1102,7 @@ mod tests {
         assert!(xlsx.extension().unwrap() == "xlsx");
 
         // the workbook rebuilds an empty database (a new server, or a lost one) with every value
-        let mut dst_conn = Pool::new(dst.as_str()).unwrap().get_conn().unwrap();
+        let mut dst_conn = Conn::new(dst.as_str()).unwrap();
         let counts = backup::restore_from_workbook(&mut dst_conn, &xlsx).expect("excel restore");
         assert_eq!((counts.patients, counts.treatments, counts.payments, counts.tooth_marks, counts.cnss_sheets, counts.appointments), (1, 1, 2, 1, 1, 1));
         // (an empty cell comes back as NULL or '' depending on the column, the app treats both the same)
@@ -1100,7 +1115,7 @@ mod tests {
         let fake = dir.join("cabinet_fake.xlsx");
         std::fs::write(&fake, b"not an excel file").unwrap();
         let dst2 = scratch_db(&root, "cabinet_dst_test");
-        let mut conn2 = Pool::new(dst2.as_str()).unwrap().get_conn().unwrap();
+        let mut conn2 = Conn::new(dst2.as_str()).unwrap();
         assert!(backup::restore_from_workbook(&mut conn2, &fake).unwrap_err().contains("illisible"));
         let mut report_only = rust_xlsxwriter::Workbook::new();
         report_only.add_worksheet().set_name("Résumé").unwrap();

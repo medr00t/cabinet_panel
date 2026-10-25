@@ -1,3 +1,5 @@
+> **Mise à jour :** Docker n'est plus nécessaire sur Windows, voir `INSTALL_WINDOWS.md` (assistant de premier démarrage). Ce document reste valable pour un serveur Docker sous Linux.
+
 # Réseau local (plusieurs postes)
 
 Chaque poste lance l'application et se connecte directement à **un seul serveur MySQL**

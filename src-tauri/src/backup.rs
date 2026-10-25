@@ -497,7 +497,7 @@ pub fn backup_dir(documents: Option<PathBuf>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".")).join("Sauvegardes Cabinet")
 }
 
-fn require_doctor(db_url: &str) -> Result<&'static config::AppConfig, String> {
+fn require_doctor(db_url: &str) -> Result<std::sync::Arc<config::AppConfig>, String> {
     let cfg = config::get()?;
     let doctor = cfg.users.iter().find(|u| u.role == "doctor").ok_or_else(|| "Aucun compte docteur".to_string())?;
     if !db_url.starts_with(&format!("mysql://{}:", doctor.mysql_user)) {
@@ -544,14 +544,14 @@ fn schema_statements() -> Vec<String> {
 }
 
 /// Creates the tables if they are missing (a brand new server, or a database that was lost).
-pub fn ensure_schema(conn: &mut PooledConn) -> Result<(), String> {
+pub fn ensure_schema(conn: &mut Conn) -> Result<(), String> {
     for stmt in schema_statements() {
         conn.query_drop(&stmt).map_err(|e| format!("Création des tables: {}", e))?;
     }
     Ok(())
 }
 
-fn require_empty(conn: &mut PooledConn) -> Result<(), String> {
+fn require_empty(conn: &mut Conn) -> Result<(), String> {
     let existing: Option<i64> = conn.query_first(
         "SELECT (SELECT COUNT(*) FROM patients) + (SELECT COUNT(*) FROM appointments) + (SELECT COUNT(*) FROM treatments)
               + (SELECT COUNT(*) FROM payments) + (SELECT COUNT(*) FROM tooth_marks) + (SELECT COUNT(*) FROM cnss_sheets)",
@@ -615,7 +615,7 @@ fn read_workbook(path: &Path) -> Result<Vec<RawRows>, String> {
 }
 
 /// Rebuilds the database from a backup workbook. Never overwrites: the database must be empty.
-pub fn restore_from_workbook(conn: &mut PooledConn, path: &Path) -> Result<RestoreResult, String> {
+pub fn restore_from_workbook(conn: &mut Conn, path: &Path) -> Result<RestoreResult, String> {
     let tables = read_workbook(path)?;
     ensure_schema(conn)?;
     require_empty(conn)?;
@@ -673,8 +673,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db_url: String, file: String)
     require_doctor(&db_url)?;
     let path = backup_path(&backup_dir(app.path().document_dir().ok()), &file)?;
     tokio::task::spawn_blocking(move || {
-        let pool = Pool::new(db_url.as_str()).map_err(|e| format!("Connexion à la base de données: {}", e))?;
-        let mut conn = pool.get_conn().map_err(|e| format!("Connexion à la base de données: {}", e))?;
+        let mut conn = Conn::new(db_url.as_str()).map_err(|e| format!("Connexion à la base de données: {}", e))?;
         restore_from_workbook(&mut conn, &path)
     })
     .await

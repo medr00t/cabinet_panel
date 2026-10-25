@@ -8,7 +8,7 @@ import { useUser } from '../contexts/UserContext';
 
 type ServerState = 'searching' | 'found' | 'missing';
 
-const Login = () => {
+const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
   const { signIn } = useUser();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -169,6 +169,7 @@ const Login = () => {
                     <button type="button" className="link" onClick={() => setEditHost(true)}>Modifier</button>
                   </div>
                 )}
+                {onReconfigure && <button type="button" className="link" style={{ marginTop: 10 }} onClick={onReconfigure}>Reconfigurer ce poste</button>}
               </div>
             </>
           )}

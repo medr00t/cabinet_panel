@@ -259,6 +259,13 @@ export async function mockInvoke(cmd: string, a: Obj): Promise<unknown> {
       });
       return delay(cmd === 'get_daily_summary_by_staff' ? rows[0] : rows.filter((r) => r.number_of_payments > 0));
     }
+    case 'setup_status': return delay({ config_exists: !location.search.includes('setup'), server_installed: false, server_running: false, port_busy: false, platform: 'windows' });
+    case 'setup_save_config': return delay(null);
+    case 'server_install': return new Promise((r) => setTimeout(() => r({ version: '8.4.11', port: 3306, address: '192.168.1.20' }), 1500));
+    case 'server_start': return delay(true);
+    case 'setup_find_backups': return delay([{ path: 'D:\\Sauvegardes Cabinet\\cabinet_2026-10.xlsx', name: 'cabinet_2026-10.xlsx', folder: 'D:\\Sauvegardes Cabinet', size: 48210, modified: '25/10/2026 18:02', restorable: true }]);
+    case 'setup_restore': return delay({ patients: 12, appointments: 5, treatments: 10, payments: 8, tooth_marks: 2, cnss_sheets: 0, settings: 1 });
+    case 'client_check': return delay({ ok: String(a.passphrase).length >= 8, host: '192.168.1.20', message: 'Serveur trouvé (192.168.1.20)' });
     default: return Promise.reject(`Commande inconnue (mock): ${cmd}`);
   }
 }

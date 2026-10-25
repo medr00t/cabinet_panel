@@ -134,6 +134,29 @@ export async function discoverServer(): Promise<string | null> {
 export const verifyDoctorAnswer = (answer: string): Promise<boolean> =>
   rawInvoke<boolean>('verify_doctor_answer', { answer });
 
+// ------------------------------------------------------------------ first-run setup (no session)
+
+export interface SetupStatus { configExists: boolean; serverInstalled: boolean; serverRunning: boolean; portBusy: boolean; platform: string }
+export interface SetupInput { role: Role; passphrase: string; code: string; name?: string; answer?: string }
+export interface ServerInfo { version: string; port: number; address?: string }
+export interface ServerProgress { step: string; percent?: number | null; message: string }
+export interface FoundBackup { path: string; name: string; folder: string; size: number; modified: string; restorable: boolean }
+export interface ClientCheck { ok: boolean; host?: string; message: string }
+const plain = <T,>(v: unknown) => mapKeys(v, camel, true) as T;
+export const setupStatus = async () => plain<SetupStatus>(await rawInvoke('setup_status', {}));
+export const setupSaveConfig = (input: SetupInput, force = false) => rawInvoke<void>('setup_save_config', { input, force });
+export const serverInstall = async (passphrase: string) => plain<ServerInfo>(await rawInvoke('server_install', { passphrase }));
+export const serverStart = () => rawInvoke<boolean>('server_start', {});
+export const setupFindBackups = async () => plain<FoundBackup[]>(await rawInvoke('setup_find_backups', {}));
+export const setupRestore = async (path: string) => plain<RestoreResult>(await rawInvoke('setup_restore', { path }));
+export const clientCheck = async (passphrase: string, role: Role) => plain<ClientCheck>(await rawInvoke('client_check', { passphrase, role }));
+/** Progress lines sent by the Rust side while the database installs. */
+export async function onServerProgress(fn: (p: ServerProgress) => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen<ServerProgress>('server-progress', (e) => fn(plain<ServerProgress>(e.payload)));
+}
+
 const CONNECTION_ERROR = /connect|connexion|timed? ?out|gone away|lost connection|broken pipe/i;
 
 // Calls a backend command with the session's db url; on a connection error, re-finds the server

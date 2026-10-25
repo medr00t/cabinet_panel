@@ -9,6 +9,8 @@ import { errorMessage, exportBackup, getServerHost } from './services/api';
 import { today } from './utils/format';
 import BackupDialog from './components/BackupDialog';
 import Login from './pages/Login';
+import SetupWizard from './pages/SetupWizard';
+import { setupStatus } from './services/api';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
 import PatientFile from './pages/PatientFile';
@@ -111,7 +113,14 @@ const Shell = () => {
 
 const App = () => {
   const { user } = useUser();
-  if (!user) return <Login />;
+  // 'wizard' on a laptop that was never set up, or when the login screen asks to reconfigure
+  const [setup, setSetup] = useState<'checking' | 'wizard' | 'done'>('checking');
+  useEffect(() => {
+    setupStatus().then((s) => setSetup(s.configExists ? 'done' : 'wizard')).catch(() => setSetup('done'));
+  }, []);
+  if (setup === 'checking') return null;
+  if (setup === 'wizard') return <SetupWizard onDone={() => setSetup('done')} />;
+  if (!user) return <Login onReconfigure={() => setSetup('wizard')} />;
   return (
     <DataProvider>
       <NavProvider>
