@@ -54,7 +54,9 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
     } catch (e) {
       const msg = errorMessage(e);
       // only a rejected code is "Code incorrect"; anything else (e.g. missing config file) shows its real reason
-      setError(/base de données|connexion/i.test(msg)
+      setError(/access denied|1045/i.test(msg)
+        ? 'Le serveur trouvé refuse le mot de passe du cabinet. Ce poste pointe peut-être vers un autre serveur : utilisez « Reconfigurer ce poste ».'
+        : /base de données|connexion/i.test(msg)
         ? 'Impossible de joindre le serveur. Vérifiez que le poste du docteur est allumé.'
         : /code invalide/i.test(msg) ? 'Code incorrect' : msg);
       setShake(true);

@@ -675,6 +675,8 @@ async fn discover_server(saved_host: Option<String>) -> Result<Option<String>, S
     use std::net::{IpAddr, SocketAddr, UdpSocket};
 
     let mut candidates: Vec<String> = Vec::new();
+    // a laptop that hosts the cabinet database always uses its own, whatever was remembered before
+    if dbserver::is_installed() { candidates.push("localhost".to_string()); }
     if let Some(h) = saved_host.map(|h| h.trim().to_string()).filter(|h| !h.is_empty()) {
         candidates.push(h);
     }
