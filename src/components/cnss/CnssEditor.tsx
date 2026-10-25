@@ -281,13 +281,10 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
               <button type="button" aria-pressed={page === 'verso'} onClick={() => setPage('verso')}>Verso — actes</button>
             </div>
             <div className="row" style={{ gap: 16 }}>
+              {hidden.length > 0 && <button type="button" className="link" onClick={() => set('hidden', [])}>Rétablir ({hidden.length})</button>}
               <label className="check"><input type="checkbox" checked={wholeSheet} onChange={(e) => setWholeSheet(e.target.checked)} />Feuille entière (A4 paysage)</label>
               <label className="check"><input type="checkbox" checked={background} onChange={(e) => setBackground(e.target.checked)} />Afficher le formulaire</label>
             </div>
-          </div>
-          <div className="cnss-hint">
-            Cliquez sur une mention de la feuille pour la <b>retirer</b> (elle restera vide, à écrire à la main) ; cliquez sur son contour en pointillés pour la remettre.
-            {hidden.length > 0 && <> <b>{hidden.length} retirée{hidden.length > 1 ? 's' : ''}</b> · <button type="button" className="link" onClick={() => set('hidden', [])}>Tout rétablir</button></>}
           </div>
           <div className="cnss-sheet" style={wholeSheet ? { maxWidth: 1100 } : undefined}>
             <CnssPage page={page} data={data} background={background} view={wholeSheet ? 'page' : 'panel'} onToggle={toggleMark} />
