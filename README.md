@@ -10,6 +10,15 @@ month, one sheet per day, one sheet for the month's new clients).
 Roles: **doctor** (everything) and **reception** (no deleting patients, acts or payments; limited
 appointment actions).
 
+## CNSS dental sheet
+
+The sheet is the official CNSS form (ref. 610-1-04, `cnssPage.pdf`, identical to the file on cnss.ma): one A4 sheet in
+landscape, folded in half, so two sides with two A5 panels each. The app fills the two right-hand panels (front: insured,
+beneficiary, INP, type of care, signatures; back: acts table and tooth diagram, with treated teeth circled).
+**Ouvrir en PDF** produces the two landscape A4 pages; print them double-sided (flip on the short edge), then fold.
+In the preview, click any mark to remove it (it stays blank to be written by hand); click its dotted outline to put it back.
+Untick "Imprimer avec le formulaire" to print only the data on an already printed official form.
+
 ## Run it
 
 ```

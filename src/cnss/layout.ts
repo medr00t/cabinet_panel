@@ -1,8 +1,15 @@
-// Where every field sits on the two scanned panels of the CNSS "Feuille de soins dentaires".
-// Coordinates are pixels of the bundled images (src/assets/cnss/recto.jpg and verso.jpg), 1810 x 2660.
+// The CNSS "Feuille de soins dentaires" is one A4 sheet in landscape, folded in half: each side holds two A5 panels
+// (front: instructions | form; back: prescriptions, lab and paramedical acts | acts and tooth diagram).
+// The bundled scans are the two sides (src/assets/cnss/page1.jpg, page2.jpg). Page coordinates are pixels of the
+// 300 dpi scan (4299 x 3035); every field below is given in the coordinates of the right-hand panel that is filled in,
+// whose top-left corner is at (PANEL_X, PANEL_Y) on the page.
 
-export const PAGE_W = 1810;
-export const PAGE_H = 2660;
+export const PAGE_W = 4299;
+export const PAGE_H = 3035;
+export const PANEL_X = 2400;
+export const PANEL_Y = 60;
+export const PANEL_W = 1810;
+export const PANEL_H = 2660;
 
 /** One box per digit/letter, e.g. the 9 boxes of the immatriculation number. `groups` are the printed boxes. */
 export interface Comb { groups: [number, number][]; baseline: number }

@@ -7,7 +7,6 @@ interface PdfPage { jpeg: Uint8Array; width: number; height: number }
 
 const A4_W = 595.28;
 const A4_H = 841.89;
-const MARGIN = 22.7; // 8 mm
 
 export function jpegPagesToPdf(pages: PdfPage[]): Uint8Array {
   const chunks: Uint8Array[] = [];
@@ -23,12 +22,14 @@ export function jpegPagesToPdf(pages: PdfPage[]): Uint8Array {
 
   pages.forEach((p, i) => {
     const [page, content, image] = [3 + 3 * i, 4 + 3 * i, 5 + 3 * i];
-    const scale = Math.min((A4_W - 2 * MARGIN) / p.width, (A4_H - 2 * MARGIN) / p.height);
+    // the sheet is A4 landscape (two A5 panels side by side); a portrait page would be rotated the other way
+    const [pageW, pageH] = p.width >= p.height ? [A4_H, A4_W] : [A4_W, A4_H];
+    const scale = Math.min(pageW / p.width, pageH / p.height);
     const w = p.width * scale;
     const h = p.height * scale;
-    const stream = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${((A4_W - w) / 2).toFixed(2)} ${((A4_H - h) / 2).toFixed(2)} cm /Im0 Do Q`;
+    const stream = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${((pageW - w) / 2).toFixed(2)} ${((pageH - h) / 2).toFixed(2)} cm /Im0 Do Q`;
     begin(page);
-    push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_W} ${A4_H}] /Resources << /XObject << /Im0 ${image} 0 R >> >> /Contents ${content} 0 R >>\nendobj\n`);
+    push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 ${image} 0 R >> >> /Contents ${content} 0 R >>\nendobj\n`);
     begin(content);
     push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`);
     begin(image);
@@ -86,10 +87,10 @@ async function svgToJpeg(svg: SVGSVGElement, width: number): Promise<PdfPage> {
   return { jpeg: new Uint8Array(await blob.arrayBuffer()), width, height };
 }
 
-/** The printable sheet as PDF bytes (2480 px wide pages, about 300 dpi on A4). */
+/** The printable sheet as PDF bytes (3508 px wide pages = A4 landscape at 300 dpi). */
 export async function sheetsToPdf(svgs: SVGSVGElement[]): Promise<Uint8Array> {
   const pages: PdfPage[] = [];
-  for (const svg of svgs) pages.push(await svgToJpeg(svg, 2480));
+  for (const svg of svgs) pages.push(await svgToJpeg(svg, 3508));
   return jpegPagesToPdf(pages);
 }
 

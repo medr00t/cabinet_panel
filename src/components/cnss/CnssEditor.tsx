@@ -45,12 +45,28 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
   });
   const [page, setPage] = useState<'recto' | 'verso'>('recto');
   const [background, setBackground] = useState(true);
+  const [wholeSheet, setWholeSheet] = useState(false); // preview the whole A4 landscape side instead of the panel being filled
   const [printBackground, setPrintBackground] = useState(true);
   const [busy, setBusy] = useState(false);
   const [feesTouched, setFeesTouched] = useState(!!editing);
   const [careTouched, setCareTouched] = useState(!!editing);
 
   const set = <K extends keyof CnssData>(k: K, v: CnssData[K]) => setData((d) => ({ ...d, [k]: v }));
+
+  // marks the user removed in the preview: they stay blank on the PDF so they can be written by hand
+  const hidden = data.hidden ?? [];
+  const toggleMark = (key: string) => setData((d) => {
+    const cur = d.hidden ?? [];
+    return { ...d, hidden: cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key] };
+  });
+
+  // who is covered: a child or a spouse is not the insured person, so the top part is for the parent / spouse
+  const setRelation = (relation: CnssData['relation']) => setData((d) => {
+    const next = { ...d, relation };
+    if (relation === 'self' && !d.insuredName.trim()) next.insuredName = d.beneficiaryName;
+    if (relation !== 'self' && d.insuredName.trim() === d.beneficiaryName.trim()) next.insuredName = '';
+    return next;
+  });
 
   // total of the fees and the ticked "Type de soins" follow the act lines until the user edits them by hand
   const setActs = (acts: CnssAct[], nextNames: Record<string, string> = names) => {
@@ -151,10 +167,11 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
                 <Field label="N° d'immatriculation" htmlFor="c-immat" hint="9 chiffres"><input id="c-immat" className="input num" maxLength={9} value={data.immat} onChange={(e) => set('immat', e.target.value.replace(/\s/g, ''))} /></Field>
                 <Field label="N° CIN de l'assuré(e)" htmlFor="c-icin"><input id="c-icin" className="input num" maxLength={9} value={data.insuredCin} onChange={(e) => set('insuredCin', e.target.value.toUpperCase().replace(/\s/g, ''))} /></Field>
               </div>
-              <Field label="Lien de parenté du bénéficiaire avec l'assuré(e)">
+              <Field label="Lien de parenté du bénéficiaire avec l'assuré(e)"
+                hint={data.relation === 'self' ? undefined : data.relation === 'child' ? 'Le patient est un enfant : saisissez ici son parent assuré (nom, immatriculation, CIN).' : 'Saisissez ici le conjoint assuré (nom, immatriculation, CIN).'}>
                 <div className="segmented wide" role="group">
                   {([['self', 'Lui-même'], ['spouse', 'Conjoint'], ['child', 'Enfant']] as const).map(([v, l]) => (
-                    <button key={v} type="button" aria-pressed={data.relation === v} onClick={() => set('relation', v)}>{l}</button>
+                    <button key={v} type="button" aria-pressed={data.relation === v} onClick={() => setRelation(v)}>{l}</button>
                   ))}
                 </div>
               </Field>
@@ -263,9 +280,18 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
               <button type="button" aria-pressed={page === 'recto'} onClick={() => setPage('recto')}>Recto</button>
               <button type="button" aria-pressed={page === 'verso'} onClick={() => setPage('verso')}>Verso — actes</button>
             </div>
-            <label className="check"><input type="checkbox" checked={background} onChange={(e) => setBackground(e.target.checked)} />Afficher le formulaire</label>
+            <div className="row" style={{ gap: 16 }}>
+              <label className="check"><input type="checkbox" checked={wholeSheet} onChange={(e) => setWholeSheet(e.target.checked)} />Feuille entière (A4 paysage)</label>
+              <label className="check"><input type="checkbox" checked={background} onChange={(e) => setBackground(e.target.checked)} />Afficher le formulaire</label>
+            </div>
           </div>
-          <div className="cnss-sheet"><CnssPage page={page} data={data} background={background} /></div>
+          <div className="cnss-hint">
+            Cliquez sur une mention de la feuille pour la <b>retirer</b> (elle restera vide, à écrire à la main) ; cliquez sur son contour en pointillés pour la remettre.
+            {hidden.length > 0 && <> <b>{hidden.length} retirée{hidden.length > 1 ? 's' : ''}</b> · <button type="button" className="link" onClick={() => set('hidden', [])}>Tout rétablir</button></>}
+          </div>
+          <div className="cnss-sheet" style={wholeSheet ? { maxWidth: 1100 } : undefined}>
+            <CnssPage page={page} data={data} background={background} view={wholeSheet ? 'page' : 'panel'} onToggle={toggleMark} />
+          </div>
         </div>
       </div>
 

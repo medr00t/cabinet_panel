@@ -240,11 +240,20 @@
 
 .print-root { display: none; }
 @media print {
-  @page { size: A4 portrait; margin: 8mm; }
+  @page { size: A4 landscape; margin: 0; }
   html, body { background: #fff !important; }
   #root, .toasts { display: none !important; }
   .print-root { display: block; }
-  .print-page { width: 194mm; height: 281mm; overflow: hidden; break-after: page; page-break-after: always; }
+  .print-page { width: 297mm; height: 210mm; overflow: hidden; break-after: page; page-break-after: always; }
   .print-page:last-child { break-after: auto; page-break-after: auto; }
   .print-page .cnss-svg { width: 100%; height: 100%; }
 }
+
+/* marks that can be removed in the preview */
+.cnss-svg.editable .ink { cursor: pointer; }
+.cnss-svg.editable .ink .hit { fill: transparent; stroke: none; }
+.cnss-svg.editable .ink:hover .hit { fill: rgba(220, 38, 38, .12); stroke: rgba(220, 38, 38, .7); stroke-width: 3; }
+.cnss-svg.editable .ink-off .hit { fill: transparent; stroke: #94a3b8; stroke-width: 3; stroke-dasharray: 10 8; }
+.cnss-svg.editable .ink-off:hover .hit { fill: rgba(22, 163, 74, .12); stroke: rgba(22, 163, 74, .8); }
+
+.cnss-hint { width: 100%; max-width: 760px; padding: 9px 14px; border-radius: 8px; background: var(--brand-50); color: var(--brand-700); font-size: 12.5px; line-height: 1.5; }

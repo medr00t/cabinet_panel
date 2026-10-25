@@ -2,7 +2,7 @@ import { Patient, Treatment } from '../services/api';
 import { ACT_CATALOG } from '../constants';
 import { parseDesignation } from '../teeth';
 import { MAX_ACT_LINES } from './layout';
-import { today } from '../utils/format';
+import { ageOf, today } from '../utils/format';
 
 export interface CnssAct {
   id: string;
@@ -42,6 +42,8 @@ export interface CnssData {
   placeDentist: string;
   dateDentist: string;
   acts: CnssAct[];
+  /** marks removed in the preview (left blank to be written by hand): field names, `act:<id>`, `tooth:<fdi>` */
+  hidden?: string[];
 }
 
 export interface Settings { cnssInp?: string; cnssCity?: string; dentistName?: string }
@@ -98,12 +100,15 @@ export const newSheet = ({ patient, treatments, settings, previous, alreadyBille
   const names: Record<string, string> = {};
   acts.forEach((a, i) => { names[a.id] = todo.slice(-MAX_ACT_LINES)[i].act; });
   const city = settings.cnssCity || 'Meknès';
+  // a child (or anyone covered by someone else) is not the insured person: the parent / spouse fills the top part
+  const age = ageOf(patient.dateOfBirth);
+  const relation: CnssData['relation'] = previous?.relation ?? (age !== null && age < 18 ? 'child' : 'self');
   const data: CnssData = {
     entente: false, execution: true,
-    insuredName: previous?.insuredName ?? fullName,
+    insuredName: previous?.insuredName ?? (relation === 'self' ? fullName : ''),
     immat: previous?.immat ?? '',
     insuredCin: previous?.insuredCin ?? '',
-    relation: previous?.relation ?? 'self',
+    relation,
     address: previous?.address ?? patient.address ?? '',
     fees: '', attachments: previous?.attachments ?? '',
     beneficiaryName: fullName,
