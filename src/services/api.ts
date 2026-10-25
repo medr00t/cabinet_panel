@@ -57,6 +57,9 @@ export interface Payment {
   id: number; patientId: number; patientName?: string; treatmentId?: number; treatmentAct?: string;
   amount: number; paymentMethod: PaymentMethod; collectedBy: number; paymentDate: string;
 }
+export type ToothStatus = '' | 'carie' | 'soigne' | 'devitalise' | 'couronne' | 'implant' | 'absente';
+/** Per-tooth state set by hand, plus a remark (FDI tooth number like "36"). */
+export interface ToothMark { patientId: number; tooth: string; status: ToothStatus; note?: string; updatedBy: number; updatedAt?: string }
 export interface Balance { patientId: number; totalQuote: number; totalPaid: number }
 export interface DailySummary {
   date: string; staffId: number; staffName: string;
@@ -187,6 +190,24 @@ export const payTreatment = (treatmentId: number, amount: number, paymentMethod:
 export const treatmentPayments = (treatmentId: number) => call<TreatmentPayment[]>('get_treatment_payments', { treatmentId });
 export const removePayment = (id: number) => call<void>('delete_payment', { id });
 export const patientBalances = () => call<Balance[]>('get_patient_balances');
+
+export const toothMarks = (patientId: number) => call<ToothMark[]>('get_tooth_marks', { patientId });
+export const saveToothMark = (mark: ToothMark) => call<void>('set_tooth_mark', { mark });
+
+// ------------------------------------------------------------------ CNSS sheets and clinic settings
+
+export interface CnssSheetRow { id?: number; patientId: number; label: string; data: string; createdBy: number; createdAt?: string; updatedAt?: string }
+export const cnssSheets = (patientId: number) => call<CnssSheetRow[]>('get_cnss_sheets', { patientId });
+export const saveCnssSheet = (sheet: CnssSheetRow) => call<number>('save_cnss_sheet', { sheet });
+export const removeCnssSheet = (id: number) => call<void>('delete_cnss_sheet', { id });
+/** keys come back camelCased: cnssInp, cnssCity, dentistName */
+export const getSettings = () => call<Record<string, string>>('get_settings');
+export const setSetting = (name: 'cnss_inp' | 'cnss_city' | 'dentist_name', value: string) => call<void>('set_setting', { name, value });
+
+// ------------------------------------------------------------------ Excel backup (doctor only)
+
+export interface BackupResult { path: string; patients: number; treatments: number; payments: number; appointments: number; toothMarks: number }
+export const exportBackup = () => call<BackupResult>('export_backup');
 
 // ------------------------------------------------------------------ caisse
 

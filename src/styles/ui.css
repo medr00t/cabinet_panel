@@ -154,3 +154,97 @@
 .date-native { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 .btn.spin svg { animation: spin .7s linear infinite; }
+
+/* ---------- odontogram (tooth chart, seen from above) ---------- */
+.odonto { display: block; width: 100%; margin: 0 auto; user-select: none; }
+.odonto .arch-label { font-size: 11px; font-weight: 650; letter-spacing: .14em; text-transform: uppercase; fill: #c0cad8; pointer-events: none; }
+.odonto .tooth-no { font-size: 12px; font-weight: 600; fill: var(--text-3); font-variant-numeric: tabular-nums; pointer-events: none; }
+.odonto .tooth-no.on { fill: var(--brand-700); font-weight: 800; }
+.odonto .tooth { cursor: pointer; outline: none; }
+.odonto.locked .tooth { cursor: default; }
+.odonto.locked .tooth:hover .crown { stroke-width: 1.8; filter: none; }
+.odonto .tooth .crown { transition: stroke-width .1s, filter .1s; }
+.odonto .tooth:hover .crown, .odonto .tooth:focus-visible .crown { stroke-width: 2.8; filter: drop-shadow(0 2px 3px rgba(15, 23, 42, .25)); }
+.odonto .halo { fill: var(--brand-50); stroke: var(--brand-500); stroke-width: 2; }
+.odonto .tooth.is-active .halo { fill: #dbeafe; stroke: var(--navy-800); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: center; font-size: 12.5px; color: var(--text-2); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; border: 1.6px solid; }
+
+.designation { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.tooth-chip { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--brand-50); color: var(--brand-700); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tooth-chip.zone { background: var(--line); color: var(--text-2); font-weight: 600; }
+
+.tooth-picker { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 20px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; background: var(--surface-2); }
+.tooth-picker-side { display: grid; gap: 14px; align-content: start; }
+.tooth-picker-side .zones { display: flex; flex-wrap: wrap; gap: 6px; }
+.tooth-picker-side .none { color: var(--text-3); font-size: 13px; }
+@media (max-width: 760px) { .tooth-picker { grid-template-columns: 1fr; } }
+
+.chart-layout { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 20px; align-items: start; }
+.tooth-panel { padding: 20px; display: grid; gap: 16px; }
+.tooth-panel h3 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.tooth-panel .sub { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.status-opt { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--text-2); text-align: left; }
+.status-opt:hover { border-color: var(--text-3); }
+.status-opt i { width: 12px; height: 12px; border-radius: 4px; border: 1.6px solid; flex: none; }
+.status-opt[aria-pressed="true"] { background: var(--brand-50); border-color: var(--brand-500); color: var(--brand-700); }
+.tooth-acts { display: grid; gap: 8px; }
+.tooth-act { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.tooth-act .d { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tooth-act .n { margin-top: 3px; color: var(--text-2); font-size: 12.5px; }
+
+/* ---------- grouped suggestions (acts / motifs) ---------- */
+.combo { position: relative; }
+.combo-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 300px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow-md); padding: 6px; }
+.combo-group { padding: 8px 10px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.combo-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 7px 10px; border: 0; background: none; border-radius: 6px; font-size: 13.5px; text-align: left; }
+.combo-item:hover, .combo-item.hot { background: var(--brand-50); color: var(--brand-700); }
+.combo-item small { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+
+@media (max-width: 1100px) { .chart-layout { grid-template-columns: 1fr; } }
+
+.segmented.wide { display: flex; }
+.segmented.wide button { flex: 1; }
+.zone-cards { display: grid; gap: 8px; }
+.zone-card { display: grid; gap: 1px; padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); text-align: left; }
+.zone-card b { font-size: 13.5px; }
+.zone-card span { font-size: 12px; color: var(--text-3); }
+.zone-card:hover { border-color: var(--text-3); }
+.zone-card[aria-checked="true"] { border-color: var(--brand-500); background: var(--brand-50); box-shadow: 0 0 0 1px var(--brand-500) inset; }
+.zone-card[aria-checked="true"] b { color: var(--brand-700); }
+
+/* ---------- CNSS sheet editor + print ---------- */
+.cnss-editor { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); }
+.cnss-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.cnss-bar h2 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.cnss-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(380px, 520px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.cnss-form { overflow-y: auto; padding: 18px 22px 40px; background: var(--surface); border-right: 1px solid var(--line); display: grid; gap: 14px; align-content: start; }
+.cnss-form details { border: 1px solid var(--line); border-radius: var(--radius); padding: 0 16px 16px; }
+.cnss-form summary { cursor: pointer; padding: 14px 0; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); list-style: none; display: flex; align-items: center; gap: 8px; }
+.cnss-form summary::-webkit-details-marker { display: none; }
+.cnss-form summary::before { content: "▸"; font-size: 11px; transition: transform .12s; color: var(--text-3); }
+.cnss-form details[open] summary::before { transform: rotate(90deg); }
+.cnss-form summary .count { margin-left: auto; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--brand-50); color: var(--brand-700); }
+.cnss-act { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface-2); display: grid; gap: 10px; }
+.cnss-preview { overflow: auto; padding: 16px 24px 28px; display: grid; justify-items: center; align-content: start; grid-auto-rows: max-content; gap: 12px; }
+.cnss-preview-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; max-width: 760px; }
+.cnss-sheet { width: 100%; max-width: 760px; background: #fff; border-radius: 6px; box-shadow: var(--shadow-md); overflow: hidden; }
+.cnss-svg { display: block; width: 100%; height: auto; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 550; color: var(--text-2); cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--brand-600); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+@media (max-width: 1000px) { .cnss-body { grid-template-columns: 1fr; } .cnss-preview { display: none; } }
+
+.print-root { display: none; }
+@media print {
+  @page { size: A4 portrait; margin: 8mm; }
+  html, body { background: #fff !important; }
+  #root, .toasts { display: none !important; }
+  .print-root { display: block; }
+  .print-page { width: 194mm; height: 281mm; overflow: hidden; break-after: page; page-break-after: always; }
+  .print-page:last-child { break-after: auto; page-break-after: auto; }
+  .print-page .cnss-svg { width: 100%; height: 100%; }
+}

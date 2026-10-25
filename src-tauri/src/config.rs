@@ -19,6 +19,9 @@ pub struct UserEntry {
 pub struct AppConfig {
     pub users: Vec<UserEntry>,
     pub doctor_security_answer: String,
+    /// where the daily Excel backups go (default: Documents/Sauvegardes Cabinet)
+    #[serde(default)]
+    pub backup_dir: Option<String>,
 }
 
 static CONFIG: OnceLock<Result<AppConfig, String>> = OnceLock::new();

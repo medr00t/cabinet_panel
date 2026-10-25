@@ -43,6 +43,33 @@ pub struct PatientBalance {
     pub total_paid: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ToothMark {
+    pub patient_id: i64,
+    pub tooth: String,
+    pub status: String,
+    pub note: Option<String>,
+    pub updated_by: i64,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+const TOOTH_STATUSES: [&str; 7] = ["", "carie", "soigne", "devitalise", "couronne", "implant", "absente"];
+
+/// FDI numbering: permanent 11-18, 21-28, 31-38, 41-48; deciduous 51-55, 61-65, 71-75, 81-85.
+pub fn valid_tooth(t: &str) -> bool {
+    let b = t.as_bytes();
+    if b.len() != 2 || !b.iter().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let (quadrant, n) = (b[0] - b'0', b[1] - b'0');
+    match quadrant {
+        1..=4 => (1..=8).contains(&n),
+        5..=8 => (1..=5).contains(&n),
+        _ => false,
+    }
+}
+
 pub fn blank_to_none(value: Option<String>) -> Option<String> {
     value.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
@@ -77,6 +104,9 @@ fn validate_treatment(t: &Treatment) -> Result<(), String> {
     }
     if !valid_date(&t.treatment_date) {
         return Err("Date invalide".to_string());
+    }
+    if t.tooth.chars().count() > 120 {
+        return Err("Trop de dents sélectionnées".to_string());
     }
     check_amount("Devis", t.quote)
 }
@@ -269,4 +299,38 @@ pub async fn get_next_billet_number(db_url: String) -> Result<String, String> {
         .query_first("SELECT MAX(CAST(billet_number AS UNSIGNED)) FROM patients WHERE billet_number REGEXP '^[0-9]+$'")
         .map_err(|e| db_err("Lecture des billets", e))?;
     Ok((max.flatten().unwrap_or(0) + 1).to_string())
+}
+
+#[tauri::command]
+pub async fn get_tooth_marks(patient_id: i64, db_url: String) -> Result<Vec<ToothMark>, String> {
+    let mut conn = get_connection_with_retry(&db_url, 3).await?;
+    conn.exec_map(
+        "SELECT patient_id, tooth, status, note, updated_by, updated_at FROM tooth_marks WHERE patient_id = ? ORDER BY tooth",
+        (patient_id,),
+        |(patient_id, tooth, status, note, updated_by, updated_at)| ToothMark { patient_id, tooth, status, note, updated_by, updated_at },
+    )
+    .map_err(|e| db_err("Lecture des dents", e))
+}
+
+// Upsert only (no DELETE): clearing a tooth means status '' and no note, so reception can do it too.
+#[tauri::command]
+pub async fn set_tooth_mark(mark: ToothMark, db_url: String) -> Result<(), String> {
+    if !valid_tooth(&mark.tooth) {
+        return Err("Numéro de dent invalide".to_string());
+    }
+    if !TOOTH_STATUSES.contains(&mark.status.as_str()) {
+        return Err("Statut de dent invalide".to_string());
+    }
+    let note = blank_to_none(mark.note);
+    if note.as_deref().map_or(0, |n| n.chars().count()) > 2000 {
+        return Err("Remarque trop longue".to_string());
+    }
+    let mut conn = get_connection_with_retry(&db_url, 3).await?;
+    conn.exec_drop(
+        "INSERT INTO tooth_marks (patient_id, tooth, status, note, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW()) AS new
+         ON DUPLICATE KEY UPDATE status = new.status, note = new.note, updated_by = new.updated_by, updated_at = new.updated_at",
+        (mark.patient_id, mark.tooth, mark.status, note, mark.updated_by),
+    )
+    .map_err(|e| db_err("Enregistrement de la dent", e))
 }

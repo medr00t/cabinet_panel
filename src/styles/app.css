@@ -78,7 +78,6 @@ button.list-row:hover { background: var(--surface-2); }
 .balance-strip .v small { font-size: 12.5px; font-weight: 600; margin-left: 4px; color: var(--text-3); }
 .balance-strip .due .v { color: var(--bad); }
 .balance-strip .paid .v { color: var(--ok); }
-.ledger td.tooth { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--brand-700); }
 .ledger .act { font-weight: 600; }
 .ledger .note { font-size: 12.5px; color: var(--text-3); margin-top: 1px; }
 .ledger tr.sub td { background: var(--surface-2); padding: 8px 16px 8px 40px; font-size: 12.5px; color: var(--text-2); }

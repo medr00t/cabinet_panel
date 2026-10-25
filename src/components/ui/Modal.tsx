@@ -16,14 +16,19 @@ const Modal = ({ title, subtitle, onClose, children, footer, size = 'default', o
   const panel = useRef<HTMLDivElement>(null);
   const downOnOverlay = useRef(false);
 
+  // `onClose` is a new function on every parent render (e.g. each 20 s data refresh): keep the latest in a ref
+  // so the focus/keyboard effect below runs only when the modal opens, not on every re-render.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current(); };
     document.addEventListener('keydown', onKey);
     // focus the first field so the keyboard works straight away
     (panel.current?.querySelector<HTMLElement>('[data-autofocus]')
       ?? panel.current?.querySelector<HTMLElement>('input:not([type=hidden]):not(:disabled), select, textarea'))?.focus();
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   const inner = (
     <>

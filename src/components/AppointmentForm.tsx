@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import Modal from './ui/Modal';
 import Field from './ui/Field';
 import DateField from './ui/DateField';
+import ActPicker from './ui/ActPicker';
 import PatientPicker from './PatientPicker';
-import { ACTS, STATUS_LABEL, TIME_SLOTS } from '../constants';
+import { STATUS_LABEL, TIME_SLOTS } from '../constants';
 import { Appointment, AppointmentStatus, Patient, createAppointment, errorMessage, saveAppointment } from '../services/api';
 import { fmtTime, today } from '../utils/format';
 
@@ -78,8 +79,7 @@ const AppointmentForm = ({ patients, appointments, appointment, defaultPatientId
           </div>
         )}
         <Field label="Motif" htmlFor="a-type" required>
-          <input id="a-type" className="input" list="appt-types" value={type} onChange={(e) => setType(e.target.value)} autoComplete="off" />
-          <datalist id="appt-types">{ACTS.map((a) => <option key={a} value={a} />)}</datalist>
+          <ActPicker id="a-type" value={type} onChange={setType} placeholder="Choisir ou saisir un motif…" />
         </Field>
         {editing && (
           <Field label="Statut" htmlFor="a-status">

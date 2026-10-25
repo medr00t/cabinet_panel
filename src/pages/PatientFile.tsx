@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, CalendarPlus, ChevronDown, ChevronRight, ClipboardList, CreditCard, FileText, MapPin, Pencil, Phone,
+  ArrowLeft, CalendarPlus, FileText as FileIcon, ChevronDown, ChevronRight, ClipboardList, CreditCard, FileText, MapPin, Pencil, Phone,
   Plus, ShieldPlus, Trash2, UserX, Wallet,
 } from 'lucide-react';
 import RefreshButton from '../components/ui/RefreshButton';
@@ -11,6 +11,10 @@ import PatientForm from '../components/PatientForm';
 import TreatmentForm from '../components/TreatmentForm';
 import PaymentForm from '../components/PaymentForm';
 import AppointmentForm from '../components/AppointmentForm';
+import Odontogram from '../components/Odontogram';
+import CnssEditor from '../components/cnss/CnssEditor';
+import ToothPanel from '../components/ToothPanel';
+import Designation from '../components/ui/Designation';
 import { METHODS, STATUS_BADGE, STATUS_LABEL } from '../constants';
 import { useData } from '../contexts/DataContext';
 import { useNav } from '../contexts/NavContext';
@@ -18,14 +22,17 @@ import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import { useLoader } from '../hooks/useLoader';
 import {
-  Treatment, TreatmentPayment, errorMessage, patientTreatments, removePatient, removePayment, removeTreatment, treatmentPayments,
+  Treatment, TreatmentPayment, cnssSheets, errorMessage, getSettings, patientTreatments, removeCnssSheet, removePatient, removePayment, removeTreatment, toothMarks, treatmentPayments,
 } from '../services/api';
+import { STATUS, STATUS_ORDER, computeToothStates } from '../teeth';
+import { CnssData, SavedSheet, Settings, totalOf } from '../cnss/model';
 import { ageOf, fmtDate, fmtTime, fullName, money } from '../utils/format';
 
-type Tab = 'actes' | 'dossier' | 'rdv';
+type Tab = 'actes' | 'dents' | 'cnss' | 'dossier' | 'rdv';
 type Dialog =
-  | { kind: 'edit-patient' } | { kind: 'new-act' } | { kind: 'edit-act'; t: Treatment } | { kind: 'pay'; t: Treatment }
+  | { kind: 'edit-patient' } | { kind: 'new-act'; tooth?: string } | { kind: 'edit-act'; t: Treatment } | { kind: 'pay'; t: Treatment }
   | { kind: 'new-appt' } | { kind: 'delete-act'; t: Treatment } | { kind: 'delete-payment'; p: TreatmentPayment; t: Treatment }
+  | { kind: 'cnss'; editing?: SavedSheet } | { kind: 'delete-cnss'; sheet: SavedSheet }
   | { kind: 'delete-patient' };
 
 const PatientFile = ({ patientId }: { patientId: number }) => {
@@ -45,6 +52,18 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { open.forEach((id) => { loadHistory(id); }); }, [version]);
   const lines = ledger.data ?? [];
+  const marks = useLoader(() => toothMarks(patientId), [patientId, version]);
+  const toothStates = useMemo(() => computeToothStates(lines, marks.data ?? []), [lines, marks.data]);
+  const sheetRows = useLoader(() => cnssSheets(patientId), [patientId, version]);
+  const settingsLoader = useLoader(() => getSettings(), [version]);
+  const savedSheets: SavedSheet[] = useMemo(() => (sheetRows.data ?? []).flatMap((r) => {
+    try {
+      const data = JSON.parse(r.data) as CnssData;
+      return [{ id: r.id!, label: r.label, createdAt: r.createdAt, updatedAt: r.updatedAt, data: { ...data, acts: data.acts ?? [] } }];
+    } catch { return []; }
+  }), [sheetRows.data]);
+  const [activeTooth, setActiveTooth] = useState<string | null>(null);
+  const [baby, setBaby] = useState<boolean | null>(null); // null = decide from the patient's age
 
   const totals = useMemo(() => {
     const quote = lines.reduce((s, t) => s + t.quote, 0);
@@ -68,7 +87,7 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
   // after any change: reload this ledger, the global balances, and any open payment history
   const changed = async () => {
     setDialog(null);
-    await Promise.all([ledger.reload(), refresh(), ...[...open].map(loadHistory)]);
+    await Promise.all([ledger.reload(), marks.reload(), sheetRows.reload(), refresh(), ...[...open].map(loadHistory)]);
   };
   const fail = (title: string) => (e: unknown) => { toast.error(title, errorMessage(e)); throw e; };
 
@@ -83,6 +102,9 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
   }
 
   const age = ageOf(patient.dateOfBirth);
+  const child = age !== null && age <= 11;
+  const showBaby = baby ?? child;
+  const stateCounts = STATUS_ORDER.map((k) => ({ k, n: Object.values(toothStates).filter((t) => t.status === k).length })).filter((x) => x.n > 0);
   const methodLabel = (m: string) => METHODS.find((x) => x.value === m)?.label ?? m;
 
   return (
@@ -110,6 +132,7 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
           </div>
           <div className="row" style={{ alignSelf: 'flex-start' }}>
             <button className="btn btn-secondary" onClick={() => setDialog({ kind: 'new-appt' })}><CalendarPlus /> Rendez-vous</button>
+            <button className="btn btn-secondary" onClick={() => setDialog({ kind: 'cnss' })}><FileIcon /> Feuille CNSS</button>
             <button className="btn btn-secondary" onClick={() => setDialog({ kind: 'edit-patient' })}><Pencil /> Modifier</button>
             {isDoctor && <button className="btn btn-ghost btn-icon" aria-label="Supprimer le patient" title="Supprimer le patient" onClick={() => setDialog({ kind: 'delete-patient' })}><Trash2 /></button>}
           </div>
@@ -123,7 +146,7 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
       </section>
 
       <div className="tabs" role="tablist">
-        {([['actes', 'Actes et paiements', lines.length], ['dossier', 'Dossier clinique', 0], ['rdv', 'Rendez-vous', myAppointments.length]] as const).map(([id, label, count]) => (
+        {([['actes', 'Actes et paiements', lines.length], ['dents', 'Schéma dentaire', 0], ['cnss', 'Feuilles CNSS', savedSheets.length], ['dossier', 'Dossier clinique', 0], ['rdv', 'Rendez-vous', myAppointments.length]] as const).map(([id, label, count]) => (
           <button key={id} role="tab" className="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
             {label}{count > 0 && <span className="count">{count}</span>}
           </button>
@@ -158,7 +181,7 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
                               <tr>
                                 <td><button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleRow(t.id!)} aria-expanded={isOpen} aria-label="Détail des paiements">{isOpen ? <ChevronDown /> : <ChevronRight />}</button></td>
                                 <td className="num" style={{ whiteSpace: 'nowrap' }}>{fmtDate(t.treatmentDate)}</td>
-                                <td className="tooth">{t.tooth || <span className="muted">—</span>}</td>
+                                <td><Designation text={t.tooth} /></td>
                                 <td><div className="act">{t.act}</div>{t.notes && <div className="note">{t.notes}</div>}</td>
                                 <td className="r num">{money(t.quote)}</td>
                                 <td className="r num">{t.totalPaid > 0 ? money(t.totalPaid) : <span className="muted">—</span>}</td>
@@ -192,6 +215,63 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
                     </table>
                   </div>
                 )}
+          </section>
+        )}
+
+        {tab === 'dents' && (
+          <div className="chart-layout">
+            <section className="card">
+              <div className="card-head">
+                <h2>Schéma dentaire</h2>
+                <div className="segmented" role="group" aria-label="Type de dentition">
+                  <button type="button" aria-pressed={!showBaby} onClick={() => { setBaby(false); setActiveTooth(null); }}>Adulte</button>
+                  <button type="button" aria-pressed={showBaby} onClick={() => { setBaby(true); setActiveTooth(null); }}>Dents de lait</button>
+                </div>
+              </div>
+              <div className="card-body" style={{ display: 'grid', gap: 18 }}>
+                <Odontogram states={toothStates} active={activeTooth} deciduous={showBaby} maxWidth={620}
+                  onToothClick={(t) => setActiveTooth((cur) => (cur === t ? null : t))} />
+                <div className="legend">
+                  {STATUS_ORDER.map((k) => (
+                    <span key={k}><i style={{ borderColor: STATUS[k].color, background: STATUS[k].soft }} />{STATUS[k].label}{stateCounts.find((c) => c.k === k) ? ` · ${stateCounts.find((c) => c.k === k)!.n}` : ''}</span>
+                  ))}
+                  <span><i style={{ borderColor: '#f59e0b', background: '#f59e0b', borderRadius: 999 }} />Remarque</span>
+                </div>
+                <p className="muted" style={{ textAlign: 'center', fontSize: 13 }}>
+                  Cliquez sur une dent pour voir son historique, changer son état ou ajouter une remarque.
+                  La couleur suit automatiquement les actes enregistrés (composite, extraction, couronne…).
+                </p>
+              </div>
+            </section>
+            {activeTooth ? (
+              <ToothPanel key={activeTooth} patient={patient} tooth={activeTooth} state={toothStates[activeTooth]} userId={user!.id}
+                onChanged={async () => { await Promise.all([marks.reload(), refresh()]); }}
+                onAddAct={(t) => setDialog({ kind: 'new-act', tooth: t })} onClose={() => setActiveTooth(null)} />
+            ) : (
+              <aside className="card tooth-panel"><EmptyState icon={<ClipboardList />} title="Choisissez une dent" text="Son état, ses actes et sa remarque s'affichent ici." /></aside>
+            )}
+          </div>
+        )}
+
+        {tab === 'cnss' && (
+          <section className="card">
+            <div className="card-head">
+              <h2>Feuilles de soins CNSS</h2>
+              <button className="btn" onClick={() => setDialog({ kind: 'cnss' })}><Plus /> Nouvelle feuille</button>
+            </div>
+            {savedSheets.length === 0 ? (
+              <EmptyState icon={<FileIcon />} title="Aucune feuille CNSS" text="Préparez la feuille de soins : elle se remplit avec les données du patient et ses actes, vous la vérifiez, l'enregistrez dans le dossier et l'imprimez."
+                action={<button className="btn" onClick={() => setDialog({ kind: 'cnss' })}><Plus /> Préparer une feuille</button>} />
+            ) : savedSheets.map((sh) => (
+              <div key={sh.id} className="list-row">
+                <span className="grow">
+                  <div className="t1">{sh.label || 'Feuille CNSS'}</div>
+                  <div className="t2">{sh.data.acts.length} acte{sh.data.acts.length > 1 ? 's' : ''} · {money(totalOf(sh.data.acts))} · enregistrée le {fmtDate((sh.updatedAt ?? sh.createdAt ?? '').slice(0, 10))}</div>
+                </span>
+                <button className="btn btn-secondary btn-sm" onClick={() => setDialog({ kind: 'cnss', editing: sh })}>Ouvrir / imprimer</button>
+                {isDoctor && <button className="btn btn-ghost btn-icon btn-sm" aria-label="Supprimer la feuille" onClick={() => setDialog({ kind: 'delete-cnss', sheet: sh })}><Trash2 /></button>}
+              </div>
+            ))}
           </section>
         )}
 
@@ -239,8 +319,8 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
       </div>
 
       {dialog?.kind === 'edit-patient' && <PatientForm patient={patient} onClose={() => setDialog(null)} onSaved={async () => { toast.success('Dossier mis à jour'); setDialog(null); await refresh(); }} />}
-      {dialog?.kind === 'new-act' && <TreatmentForm patient={patient} userId={user!.id} onClose={() => setDialog(null)} onSaved={async () => { toast.success('Acte ajouté'); await changed(); }} />}
-      {dialog?.kind === 'edit-act' && <TreatmentForm patient={patient} userId={user!.id} treatment={dialog.t} onClose={() => setDialog(null)} onSaved={async () => { toast.success('Acte modifié'); await changed(); }} />}
+      {dialog?.kind === 'new-act' && <TreatmentForm patient={patient} userId={user!.id} states={toothStates} childPatient={child} initialTooth={dialog.tooth} onClose={() => setDialog(null)} onSaved={async () => { toast.success('Acte ajouté'); await changed(); }} />}
+      {dialog?.kind === 'edit-act' && <TreatmentForm patient={patient} userId={user!.id} treatment={dialog.t} states={toothStates} childPatient={child} onClose={() => setDialog(null)} onSaved={async () => { toast.success('Acte modifié'); await changed(); }} />}
       {dialog?.kind === 'pay' && <PaymentForm treatment={dialog.t} onClose={() => setDialog(null)} onSaved={async () => { toast.success('Paiement enregistré'); await changed(); }} />}
       {dialog?.kind === 'new-appt' && (
         <AppointmentForm patients={patients} appointments={appointments} defaultPatientId={patient.id} canCancel={isDoctor} onClose={() => setDialog(null)}
@@ -255,6 +335,14 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
         <ConfirmDialog danger title="Supprimer ce paiement ?" confirmLabel="Supprimer"
           message={`Le paiement de ${money(dialog.p.amount)} du ${fmtDate(dialog.p.paymentDate)} sera retiré. Le reste à payer de l'acte augmentera d'autant.`}
           onClose={() => setDialog(null)} onConfirm={async () => { await removePayment(dialog.p.id).catch(fail('Suppression impossible')); toast.success('Paiement supprimé'); await changed(); }} />
+      )}
+      {dialog?.kind === 'cnss' && (
+        <CnssEditor patient={patient} treatments={lines} sheets={savedSheets} editing={dialog.editing} settings={(settingsLoader.data ?? {}) as Settings}
+          userId={user!.id} onClose={() => setDialog(null)} onSaved={async () => { setDialog(null); setTab('cnss'); await sheetRows.reload(); await settingsLoader.reload(); }} />
+      )}
+      {dialog?.kind === 'delete-cnss' && (
+        <ConfirmDialog danger title="Supprimer cette feuille ?" confirmLabel="Supprimer" message={`« ${dialog.sheet.label} » sera supprimée du dossier.`}
+          onClose={() => setDialog(null)} onConfirm={async () => { await removeCnssSheet(dialog.sheet.id).catch(fail('Suppression impossible')); toast.success('Feuille supprimée'); await sheetRows.reload(); }} />
       )}
       {dialog?.kind === 'delete-patient' && (
         <ConfirmDialog danger title="Supprimer ce patient ?" confirmLabel="Supprimer le dossier"

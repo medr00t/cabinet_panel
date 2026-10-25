@@ -3,23 +3,30 @@ import Modal from './ui/Modal';
 import Field from './ui/Field';
 import DateField from './ui/DateField';
 import MoneyInput from './ui/MoneyInput';
-import { ACTS, METHODS } from '../constants';
+import ActPicker from './ui/ActPicker';
+import ToothPicker from './ToothPicker';
+import { METHODS, actStatus } from '../constants';
 import { Patient, PaymentMethod, Treatment, addTreatment, errorMessage, saveTreatment } from '../services/api';
+import { STATUS, ToothState, parseDesignation } from '../teeth';
 import { amount, fullName, money, parseAmount, today } from '../utils/format';
 
 interface TreatmentFormProps {
   patient: Patient;
   userId: number;
   treatment?: Treatment; // edit an existing line
+  /** pre-select a tooth (opened from the tooth chart) */
+  initialTooth?: string;
+  states: Record<string, ToothState>;
+  childPatient?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-/** One line of the paper ledger: Date | Désignation | Acte médical | Devis | Payé. */
-const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: TreatmentFormProps) => {
+/** One line of the paper ledger: Date | Désignation (teeth) | Acte médical | Devis | Payé, plus a remark. */
+const TreatmentForm = ({ patient, userId, treatment, initialTooth, states, childPatient, onClose, onSaved }: TreatmentFormProps) => {
   const editing = treatment?.id !== undefined;
   const [date, setDate] = useState(treatment?.treatmentDate ?? today());
-  const [tooth, setTooth] = useState(treatment?.tooth ?? '');
+  const [designation, setDesignation] = useState(treatment?.tooth ?? initialTooth ?? '');
   const [act, setAct] = useState(treatment?.act ?? '');
   const [quote, setQuote] = useState(treatment ? amount(treatment.quote).replace(/ /g, '') : '');
   const [paid, setPaid] = useState('');
@@ -35,10 +42,13 @@ const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: Treatme
   const reste = (Number.isNaN(quoteN) ? 0 : quoteN) - alreadyPaid - (Number.isNaN(paidN) ? 0 : paidN);
   const clear = (k: string) => setErrors((e) => ({ ...e, [k]: '' }));
 
+  const effect = actStatus(act);
+  const teethCount = parseDesignation(designation).teeth.length;
+
   const submit = async () => {
     const e: Record<string, string> = {};
     if (!act.trim()) e.act = 'Indiquez l\'acte médical';
-    if (!date) e.date = 'Date obligatoire';
+    if (!date) e.date = 'Date invalide';
     if (Number.isNaN(quoteN)) e.quote = 'Montant invalide';
     if (Number.isNaN(paidN)) e.paid = 'Montant invalide';
     if (!e.quote && !e.paid) {
@@ -49,7 +59,7 @@ const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: Treatme
     if (Object.keys(e).length) return;
 
     const line: Treatment = {
-      ...treatment, patientId: patient.id!, treatmentDate: date, tooth: tooth.trim(), act: act.trim(),
+      ...treatment, patientId: patient.id!, treatmentDate: date, tooth: designation.trim(), act: act.trim(),
       quote: quoteN, notes: notes.trim() || undefined, createdBy: treatment?.createdBy ?? userId, totalPaid: alreadyPaid,
     };
     setBusy(true);
@@ -67,7 +77,7 @@ const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: Treatme
     <Modal
       title={editing ? 'Modifier l\'acte' : 'Nouvel acte'}
       subtitle={fullName(patient)}
-      onClose={onClose} onSubmit={submit}
+      size="wide" onClose={onClose} onSubmit={submit}
       footer={<>
         {formError && <span className="error" style={{ color: 'var(--bad)', marginRight: 'auto', alignSelf: 'center', fontSize: 13 }}>{formError}</span>}
         <button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button>
@@ -75,18 +85,18 @@ const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: Treatme
       </>}
     >
       <div className="stack">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Field label="Date" htmlFor="t-date" required error={errors.date} hint={editing ? undefined : 'Changez-la pour saisir une ligne du carnet papier.'}>
+        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 16 }}>
+          <Field label="Date" htmlFor="t-date" required error={errors.date} hint={editing ? undefined : 'Modifiable (carnet papier)'}>
             <DateField id="t-date" value={date} onChange={(v) => { setDate(v); clear('date'); }} invalid={!!errors.date} />
           </Field>
-          <Field label="Désignation (dent)" htmlFor="t-tooth" hint="Ex. 36, 11-21, Haut">
-            <input id="t-tooth" className="input" value={tooth} onChange={(e) => setTooth(e.target.value)} maxLength={50} />
+          <Field label="Acte médical" htmlFor="t-act" required error={errors.act}
+            hint={effect && teethCount > 0 ? `Les dents sélectionnées passeront en « ${STATUS[effect].label.toLowerCase()} » sur le schéma.` : undefined}>
+            <ActPicker id="t-act" value={act} onChange={(v) => { setAct(v); clear('act'); }} invalid={!!errors.act} placeholder="Choisir ou saisir un acte…" showEffect />
           </Field>
         </div>
-        <Field label="Acte médical" htmlFor="t-act" required error={errors.act}>
-          <input id="t-act" className="input" list="acts" value={act} onChange={(e) => { setAct(e.target.value); clear('act'); }} aria-invalid={!!errors.act} autoComplete="off" />
-          <datalist id="acts">{ACTS.map((a) => <option key={a} value={a} />)}</datalist>
-        </Field>
+
+        <ToothPicker value={designation} onChange={setDesignation} states={states} childPatient={childPatient} />
+
         <div className="grid-2">
           <Field label="Devis" htmlFor="t-quote" required error={errors.quote}>
             <MoneyInput id="t-quote" value={quote} onChange={(v) => { setQuote(v); clear('quote'); }} invalid={!!errors.quote} />
@@ -106,8 +116,8 @@ const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: Treatme
             </select>
           </Field>
         )}
-        <Field label="Notes" htmlFor="t-notes">
-          <input id="t-notes" className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Facultatif" />
+        <Field label="Remarque" htmlFor="t-notes">
+          <textarea id="t-notes" className="textarea" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Facultatif — teinte, matériau, difficulté, conseils donnés…" />
         </Field>
         <div className="row-between" style={{ padding: '12px 14px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8 }}>
           <span className="muted" style={{ fontWeight: 600, fontSize: 13 }}>Reste à payer après cet acte</span>

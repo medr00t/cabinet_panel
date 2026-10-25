@@ -1,3 +1,5 @@
+mod backup;
+mod cnss;
 mod config;
 mod ledger;
 
@@ -633,6 +635,14 @@ fn verify_doctor_answer(answer: String) -> Result<bool, String> {
     Ok(answer.trim().to_lowercase() == expected.trim().to_lowercase())
 }
 
+/// French label of a tooth state (as shown on the chart), for exports.
+pub fn teeth_label(status: &str) -> String {
+    match status {
+        "carie" => "À traiter", "soigne" => "Soignée", "devitalise" => "Dévitalisée",
+        "couronne" => "Couronne", "implant" => "Implant", "absente" => "Absente", _ => "",
+    }.to_string()
+}
+
 async fn mysql_port_open(host: String) -> Option<String> {
     use std::time::Duration;
     let addr = format!("{}:3306", host);
@@ -741,7 +751,15 @@ pub fn run() {
             ledger::get_treatment_payments,
             ledger::delete_payment,
             ledger::get_patient_balances,
-            ledger::get_next_billet_number
+            ledger::get_next_billet_number,
+            ledger::get_tooth_marks,
+            ledger::set_tooth_mark,
+            backup::export_backup,
+            cnss::get_cnss_sheets,
+            cnss::save_cnss_sheet,
+            cnss::delete_cnss_sheet,
+            cnss::get_settings,
+            cnss::set_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -840,6 +858,133 @@ mod tests {
         let v = serde_json::to_value(auth).unwrap();
         assert!(v.get("db_url").is_some());
         assert_eq!(keys(v["user"].clone()), want(&["id", "name", "code", "role", "is_active", "created_at"]));
+    }
+
+    #[test]
+    fn fdi_tooth_numbers() {
+        for ok in ["11", "18", "28", "36", "48", "51", "55", "65", "75", "85"] {
+            assert!(ledger::valid_tooth(ok), "{}", ok);
+        }
+        for bad in ["", "1", "10", "19", "29", "39", "49", "56", "66", "76", "86", "91", "00", "3a", "111", " 36"] {
+            assert!(!ledger::valid_tooth(bad), "{:?}", bad);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn tooth_marks_upsert_and_validation() {
+        let (doc, rec, doc_id, rec_id) = sessions().await;
+        let pid = add_patient(patient("Teeth"), rec.db_url.clone()).await.unwrap();
+        let mark = |tooth: &str, status: &str, note: Option<&str>, by: i64| ledger::ToothMark {
+            patient_id: pid, tooth: tooth.into(), status: status.into(), note: note.map(String::from), updated_by: by, updated_at: None,
+        };
+
+        ledger::set_tooth_mark(mark("36", "soigne", Some("composite occlusal"), rec_id), rec.db_url.clone()).await.unwrap();
+        ledger::set_tooth_mark(mark("46", "absente", None, doc_id), doc.db_url.clone()).await.unwrap();
+        // same tooth again = update, not a duplicate row
+        ledger::set_tooth_mark(mark("36", "couronne", Some("couronne posée"), doc_id), doc.db_url.clone()).await.unwrap();
+
+        let marks = ledger::get_tooth_marks(pid, rec.db_url.clone()).await.unwrap();
+        assert_eq!(marks.len(), 2);
+        let m36 = marks.iter().find(|m| m.tooth == "36").unwrap();
+        assert_eq!((m36.status.as_str(), m36.note.as_deref(), m36.updated_by), ("couronne", Some("couronne posée"), doc_id));
+        assert!(m36.updated_at.as_deref().unwrap_or("").len() >= 10);
+
+        // clearing keeps the row but empties it (reception has no DELETE privilege)
+        ledger::set_tooth_mark(mark("46", "", None, rec_id), rec.db_url.clone()).await.unwrap();
+        let m46 = ledger::get_tooth_marks(pid, doc.db_url.clone()).await.unwrap().into_iter().find(|m| m.tooth == "46").unwrap();
+        assert_eq!((m46.status.as_str(), m46.note), ("", None));
+
+        for (t, s) in [("99", "soigne"), ("3", "soigne"), ("36", "inconnu"), ("56", "")] {
+            assert!(ledger::set_tooth_mark(mark(t, s, None, rec_id), rec.db_url.clone()).await.is_err(), "{} {}", t, s);
+        }
+        // a multi-tooth designation on an act is stored as typed
+        let mut act = treatment(pid, rec_id, 100.0);
+        act.tooth = "36, 37, 46".into();
+        let id = ledger::add_treatment(act, 0.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+        assert_eq!(ledger::get_patient_treatments(pid, rec.db_url.clone()).await.unwrap()[0].tooth, "36, 37, 46");
+        ledger::delete_treatment(id, doc.db_url.clone()).await.unwrap();
+        let mut too_long = treatment(pid, rec_id, 1.0);
+        too_long.tooth = "11, ".repeat(40);
+        assert!(ledger::add_treatment(too_long, 0.0, "espèces".into(), rec.db_url.clone()).await.is_err());
+
+        // patient cleanup: tooth marks are not financial history, so remove them first
+        let pool = Pool::new(doc.db_url.as_str()).unwrap();
+        pool.get_conn().unwrap().exec_drop("DELETE FROM tooth_marks WHERE patient_id = ?", (pid,)).unwrap();
+        delete_patient(pid, doc.db_url.clone()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn excel_backup_is_written_and_readable() {
+        let (doc, rec, _, rec_id) = sessions().await;
+        let pid = add_patient(patient("Backup"), rec.db_url.clone()).await.unwrap();
+        let id = ledger::add_treatment(treatment(pid, rec_id, 300.0), 100.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+
+        let dir = std::env::temp_dir().join(format!("cabinet-backup-test-{}", std::process::id()));
+        let staff: Vec<(i64, String)> = config::get().unwrap().users.iter().map(|u| (u.id, u.name.clone())).collect();
+        let result = backup::write_backup(&dir, &doc.db_url, &staff).expect("backup");
+        assert!(result.path.ends_with(".xlsx") && result.treatments >= 1 && result.patients >= 1);
+
+        // an .xlsx is a zip: check the sheets exist and today's data is inside
+        let file = std::fs::File::open(&result.path).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        let mut workbook = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("xl/workbook.xml").unwrap(), &mut workbook).unwrap();
+        for sheet in ["Résumé", "Patients", "Actes", "Paiements", "Rendez-vous", "Dents"] {
+            assert!(workbook.contains(sheet), "sheet {} missing", sheet);
+        }
+        let mut strings = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("xl/sharedStrings.xml").unwrap(), &mut strings).unwrap();
+        assert!(strings.contains("TestBackup") && strings.contains("Dévitalisation"), "patient/act missing from the workbook");
+        // the passwords never end up in the file
+        assert!(!strings.contains(&config::get().unwrap().users[0].mysql_password));
+
+        // running it twice the same day replaces the file instead of piling up copies
+        let again = backup::write_backup(&dir, &doc.db_url, &staff).unwrap();
+        assert_eq!(again.path, result.path);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().filter(|e| e.as_ref().unwrap().path().extension().map_or(false, |x| x == "xlsx")).count(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+        ledger::delete_treatment(id, doc.db_url.clone()).await.unwrap();
+        delete_patient(pid, doc.db_url.clone()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn cnss_sheets_and_settings() {
+        let (doc, rec, _, rec_id) = sessions().await;
+        let pid = add_patient(patient("Cnss"), rec.db_url.clone()).await.unwrap();
+        let sheet = |id: Option<i64>, data: &str| cnss::CnssSheet {
+            id, patient_id: pid, label: "Soins du 12/03".into(), data: data.into(), created_by: rec_id, created_at: None, updated_at: None,
+        };
+
+        let id = cnss::save_cnss_sheet(sheet(None, r#"{"immat":"123456789","acts":[{"teeth":"36"}]}"#), rec.db_url.clone()).await.unwrap();
+        cnss::save_cnss_sheet(sheet(Some(id), r#"{"immat":"987654321"}"#), rec.db_url.clone()).await.unwrap();
+        let other = cnss::save_cnss_sheet(sheet(None, "{}"), doc.db_url.clone()).await.unwrap();
+
+        let list = cnss::get_cnss_sheets(pid, rec.db_url.clone()).await.unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].id, Some(other), "newest first");
+        assert!(list.iter().find(|s| s.id == Some(id)).unwrap().data.contains("987654321"), "update replaced the data");
+
+        // only valid JSON is accepted
+        assert!(cnss::save_cnss_sheet(sheet(None, "not json"), rec.db_url.clone()).await.is_err());
+        // reception cannot delete a sheet, the doctor can
+        assert!(cnss::delete_cnss_sheet(id, rec.db_url.clone()).await.is_err());
+        cnss::delete_cnss_sheet(id, doc.db_url.clone()).await.unwrap();
+        cnss::delete_cnss_sheet(other, doc.db_url.clone()).await.unwrap();
+        assert!(cnss::get_cnss_sheets(pid, doc.db_url.clone()).await.unwrap().is_empty());
+
+        // settings: whitelist, upsert, trimmed
+        cnss::set_setting("cnss_inp".into(), " 123456789 ".into(), rec.db_url.clone()).await.unwrap();
+        cnss::set_setting("cnss_inp".into(), "111222333".into(), doc.db_url.clone()).await.unwrap();
+        cnss::set_setting("cnss_city".into(), "Meknès".into(), doc.db_url.clone()).await.unwrap();
+        let settings = cnss::get_settings(rec.db_url.clone()).await.unwrap();
+        assert_eq!(settings.get("cnss_inp").map(String::as_str), Some("111222333"));
+        assert_eq!(settings.get("cnss_city").map(String::as_str), Some("Meknès"));
+        assert!(cnss::set_setting("mysql_password".into(), "x".into(), doc.db_url.clone()).await.is_err());
+        delete_patient(pid, doc.db_url.clone()).await.unwrap();
     }
 
     #[test]

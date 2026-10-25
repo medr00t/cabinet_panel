@@ -57,11 +57,43 @@ CREATE TABLE IF NOT EXISTS treatments (
     id INT PRIMARY KEY AUTO_INCREMENT,
     patient_id INT NOT NULL,
     treatment_date VARCHAR(10) NOT NULL,
-    tooth VARCHAR(50) NOT NULL DEFAULT '',     -- Désignation (tooth / zone)
+    tooth VARCHAR(120) NOT NULL DEFAULT '',    -- Désignation: FDI tooth numbers ("36, 37") and/or a zone
     act VARCHAR(255) NOT NULL,                 -- Acte médical
     quote DECIMAL(10,2) NOT NULL DEFAULT 0,    -- Devis
     notes TEXT,
     created_by INT NOT NULL,
     created_at VARCHAR(19),
     INDEX (patient_id, treatment_date)
+);
+
+-- Per-tooth state and remark ("odontogramme"): one row per patient and tooth (FDI numbering).
+-- status: '' (none) | carie | soigne | devitalise | couronne | implant | absente
+CREATE TABLE IF NOT EXISTS tooth_marks (
+    patient_id INT NOT NULL,
+    tooth VARCHAR(3) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT '',
+    note TEXT,
+    updated_by INT NOT NULL,
+    updated_at VARCHAR(19),
+    PRIMARY KEY (patient_id, tooth)
+);
+
+-- CNSS "Feuille de soins dentaires": each saved sheet is a snapshot of the filled form (JSON), kept in the
+-- patient's dossier so it can be reopened, corrected and reprinted.
+CREATE TABLE IF NOT EXISTS cnss_sheets (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    patient_id INT NOT NULL,
+    label VARCHAR(120) NOT NULL DEFAULT '',
+    data MEDIUMTEXT NOT NULL,
+    created_by INT NOT NULL,
+    created_at VARCHAR(19),
+    updated_at VARCHAR(19),
+    INDEX (patient_id)
+);
+
+-- Clinic-wide values remembered once (dentist INP number, city...).
+CREATE TABLE IF NOT EXISTS settings (
+    name VARCHAR(60) PRIMARY KEY,
+    value TEXT,
+    updated_at VARCHAR(19)
 );

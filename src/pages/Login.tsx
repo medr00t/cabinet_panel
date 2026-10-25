@@ -19,8 +19,9 @@ const Login = () => {
   const [host, setHost] = useState(getServerHost());
   const [server, setServer] = useState<ServerState>('searching');
   const [editHost, setEditHost] = useState(false);
+  // The code lives in a ref as well as in state: digits typed faster than a re-render must not be lost.
   const codeRef = useRef('');
-  codeRef.current = code;
+  const setPin = useCallback((next: string) => { codeRef.current = next; setCode(next); }, []);
 
   const findServer = useCallback(async (): Promise<string | null> => {
     setServer('searching');
@@ -48,7 +49,7 @@ const Login = () => {
         if (!found) throw first;
         user = await login(pin);
       }
-      if (user.role === 'doctor') { setPending(user); setCode(''); }
+      if (user.role === 'doctor') { setPending(user); setPin(''); }
       else signIn(user);
     } catch (e) {
       const msg = errorMessage(e);
@@ -57,30 +58,30 @@ const Login = () => {
         ? 'Impossible de joindre le serveur. Vérifiez que le poste du docteur est allumé.'
         : /code invalide/i.test(msg) ? 'Code incorrect' : msg);
       setShake(true);
-      window.setTimeout(() => { setShake(false); setCode(''); }, 380);
+      window.setTimeout(() => { setShake(false); setPin(''); }, 380);
     } finally {
       setBusy(false);
     }
-  }, [findServer, signIn]);
+  }, [findServer, setPin, signIn]);
 
   const press = useCallback((digit: string) => {
     if (busy || pending) return;
     const next = (codeRef.current + digit).slice(0, 4);
-    setCode(next);
+    setPin(next);
     setError('');
     if (next.length === 4) { setServerHost(host); attempt(next); }
-  }, [attempt, busy, host, pending]);
+  }, [attempt, busy, host, pending, setPin]);
 
   // keyboard entry (not while typing in the server field or the answer field)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
       if (/^[0-9]$/.test(e.key)) press(e.key);
-      else if (e.key === 'Backspace') setCode((c) => c.slice(0, -1));
+      else if (e.key === 'Backspace') setPin(codeRef.current.slice(0, -1));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [press]);
+  }, [press, setPin]);
 
   const verify = async () => {
     if (!pending) return;
@@ -144,9 +145,9 @@ const Login = () => {
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
                   <button key={k} type="button" className="key" onClick={() => press(k)} disabled={busy}>{k}</button>
                 ))}
-                <button type="button" className="key fn" onClick={() => setCode('')} disabled={busy || !code}>Effacer</button>
+                <button type="button" className="key fn" onClick={() => setPin('')} disabled={busy || !code}>Effacer</button>
                 <button type="button" className="key" onClick={() => press('0')} disabled={busy}>0</button>
-                <button type="button" className="key fn" onClick={() => setCode((c) => c.slice(0, -1))} disabled={busy || !code} aria-label="Supprimer"><Delete size={20} /></button>
+                <button type="button" className="key fn" onClick={() => setPin(codeRef.current.slice(0, -1))} disabled={busy || !code} aria-label="Supprimer"><Delete size={20} /></button>
               </div>
 
               <div className="login-foot">

@@ -45,6 +45,8 @@ const treatments: Obj[] = [
   { id: 6, patient_id: 4, treatment_date: d(-7), tooth: '', act: 'Détartrage', quote: 300, notes: null, created_by: 2 },
   { id: 7, patient_id: 5, treatment_date: d(-14), tooth: '11-21', act: 'Facettes', quote: 6000, notes: null, created_by: 1 },
   { id: 8, patient_id: 8, treatment_date: d(0), tooth: '18', act: 'Extraction', quote: 350, notes: null, created_by: 2 },
+  { id: 9, patient_id: 1, treatment_date: d(-10), tooth: '14, 15', act: 'Composite', quote: 700, notes: 'Teinte A3, digue posée', created_by: 2 },
+  { id: 10, patient_id: 1, treatment_date: d(-2), tooth: 'Maxillaire', act: 'Détartrage', quote: 250, notes: null, created_by: 2 },
 ];
 
 const payments: Obj[] = [
@@ -58,6 +60,16 @@ const payments: Obj[] = [
   { id: 8, treatment_id: 8, patient_id: 8, amount: 350, payment_method: 'carte', collected_by: 2, payment_date: d(0) },
   { id: 9, treatment_id: 3, patient_id: 1, amount: 700, payment_method: 'espèces', collected_by: 2, payment_date: d(0) },
 ];
+
+const toothMarks: Obj[] = [
+  { patient_id: 1, tooth: '46', status: 'absente', note: 'Extraite en 2019, implant envisagé', updated_by: 1, updated_at: `${d(-400)} 10:00:00` },
+  { patient_id: 1, tooth: '18', status: 'carie', note: 'À surveiller à la prochaine visite', updated_by: 1, updated_at: `${d(-5)} 10:00:00` },
+  { patient_id: 1, tooth: '11', status: '', note: 'Sensible au froid', updated_by: 2, updated_at: `${d(-9)} 10:00:00` },
+];
+const cnssSheets: Obj[] = [];
+const settings: Record<string, string> = { cnss_inp: '123456789', cnss_city: 'Meknès' };
+const VALID_STATUS = ['', 'carie', 'soigne', 'devitalise', 'couronne', 'implant', 'absente'];
+const validTooth = (t: string) => /^[1-4][1-8]$/.test(t) || /^[5-8][1-5]$/.test(t);
 
 const appt = (n: number, pid: number, day: number, time: string, type: string, status: string, notes: string | null = null) =>
   ({ id: n, patient_id: pid, date: d(day), time, treatment_type: type, notes, status });
@@ -179,6 +191,36 @@ export async function mockInvoke(cmd: string, a: Obj): Promise<unknown> {
     case 'get_treatment_payments':
       return delay(payments.filter((p) => p.treatment_id === a.treatmentId).sort((x, y) => x.payment_date.localeCompare(y.payment_date) || x.id - y.id));
     case 'delete_payment': requireDoctor(url); payments.splice(payments.findIndex((x) => x.id === a.id), 1); return delay(null);
+    case 'get_cnss_sheets': return delay(cnssSheets.filter((s) => s.patient_id === a.patientId).sort((x, y) => y.id - x.id));
+    case 'save_cnss_sheet': {
+      const s = a.sheet;
+      try { JSON.parse(s.data); } catch { fail('Données de la feuille CNSS invalides'); }
+      const now = `${format(new Date(), 'yyyy-MM-dd')} 12:00:00`;
+      if (s.id) { const i = cnssSheets.findIndex((x) => x.id === s.id); cnssSheets[i] = { ...cnssSheets[i], label: s.label, data: s.data, updated_at: now }; return delay(s.id); }
+      const row = { ...s, id: id(), created_at: now, updated_at: now };
+      cnssSheets.push(row);
+      return delay(row.id);
+    }
+    case 'delete_cnss_sheet': requireDoctor(url); cnssSheets.splice(cnssSheets.findIndex((x) => x.id === a.id), 1); return delay(null);
+    case 'get_settings': return delay({ ...settings });
+    case 'set_setting':
+      if (!['cnss_inp', 'cnss_city', 'dentist_name'].includes(a.name)) fail('Paramètre inconnu');
+      settings[a.name] = String(a.value).trim();
+      return delay(null);
+    case 'export_backup':
+      requireDoctor(url);
+      return delay({ path: `Documents/Sauvegardes Cabinet/cabinet_${format(new Date(), 'yyyy-MM-dd')}.xlsx (aperçu navigateur)`, patients: patients.length,
+        treatments: treatments.length, payments: payments.length, appointments: appointments.length, tooth_marks: toothMarks.length });
+    case 'get_tooth_marks': return delay(toothMarks.filter((m) => m.patient_id === a.patientId));
+    case 'set_tooth_mark': {
+      const m = a.mark;
+      if (!validTooth(m.tooth)) fail('Numéro de dent invalide');
+      if (!VALID_STATUS.includes(m.status)) fail('Statut de dent invalide');
+      const row = { ...m, note: m.note?.trim() || null, updated_at: `${format(new Date(), 'yyyy-MM-dd')} 12:00:00` };
+      const i = toothMarks.findIndex((x) => x.patient_id === m.patient_id && x.tooth === m.tooth);
+      if (i >= 0) toothMarks[i] = row; else toothMarks.push(row);
+      return delay(null);
+    }
     case 'get_patient_balances': {
       const by = new Map<number, { patient_id: number; total_quote: number; total_paid: number }>();
       for (const t of treatments) {

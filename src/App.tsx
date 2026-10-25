@@ -1,9 +1,11 @@
-import { CalendarDays, LayoutDashboard, LogOut, Users, Wallet } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CalendarDays, FileSpreadsheet, LayoutDashboard, LogOut, Users, Wallet } from 'lucide-react';
 import BrandMark from './components/ui/BrandMark';
 import { DataProvider, useData } from './contexts/DataContext';
 import { NavProvider, Route, useNav } from './contexts/NavContext';
 import { useUser } from './contexts/UserContext';
-import { getServerHost } from './services/api';
+import { useToast } from './contexts/ToastContext';
+import { errorMessage, exportBackup, getServerHost } from './services/api';
 import { today } from './utils/format';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -26,6 +28,27 @@ const Shell = () => {
   const { user, signOut, isDoctor } = useUser();
   const { route, go } = useNav();
   const { appointments, error } = useData();
+  const toast = useToast();
+  const [backingUp, setBackingUp] = useState(false);
+
+  // Excel backup on the doctor's machine: automatically after each login, and on demand.
+  const backup = async (automatic: boolean) => {
+    setBackingUp(true);
+    try {
+      const r = await exportBackup();
+      toast.success(automatic ? 'Sauvegarde Excel enregistrée' : 'Sauvegarde Excel terminée',
+        `${r.patients} patients, ${r.treatments} actes, ${r.payments} paiements → ${r.path}`);
+    } catch (e) {
+      toast.error('Sauvegarde Excel impossible', errorMessage(e));
+    } finally {
+      setBackingUp(false);
+    }
+  };
+  const autoBackupDone = useRef(false);
+  useEffect(() => {
+    if (isDoctor && !autoBackupDone.current) { autoBackupDone.current = true; backup(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDoctor]);
 
   const todayCount = appointments.filter((a) => a.date === today() && (a.status === 'programmé' || a.status === 'confirmé')).length;
   const activePage = route.page === 'patient' ? 'patients' : route.page;
@@ -64,6 +87,11 @@ const Shell = () => {
               <div className="me-role">{isDoctor ? 'Docteur' : 'Réception'}</div>
             </div>
           </div>
+          {isDoctor && (
+            <button className="logout" onClick={() => backup(false)} disabled={backingUp} title="Enregistre toutes les données dans un fichier Excel (Documents/Sauvegardes Cabinet)">
+              <FileSpreadsheet /> {backingUp ? 'Sauvegarde…' : 'Sauvegarde Excel'}
+            </button>
+          )}
           <button className="logout" onClick={signOut}><LogOut /> Se déconnecter</button>
         </div>
       </aside>

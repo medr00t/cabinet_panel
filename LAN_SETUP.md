@@ -50,3 +50,12 @@ Les codes sont définis dans `cabinet_config.json` (rôle `doctor` ou `reception
 Réception : peut gérer patients, rendez-vous et encaissements, voit uniquement ses propres
 paiements du jour. Docteur : tout, y compris suppression de patients, annulation/suppression
 de rendez-vous terminés et vue financière de tous les utilisateurs.
+
+## Sauvegarde Excel (poste du docteur)
+
+À chaque connexion du docteur, l'application enregistre toutes les données (patients, actes, paiements,
+rendez-vous, remarques sur les dents) dans un classeur Excel :
+`Documents\Sauvegardes Cabinet\cabinet_AAAA-MM-JJ.xlsx` (un fichier par jour, remplacé à chaque connexion du
+jour). Le bouton **Sauvegarde Excel** du menu fait la même chose à la demande. Pour changer le dossier,
+ajouter `"backup_dir": "D:\\Sauvegardes"` dans `cabinet_config.json`. Si le fichier du jour est ouvert dans
+Excel, une copie avec l'heure est créée. Le fichier ne contient aucun mot de passe.
