@@ -2,8 +2,7 @@
 .app { display: grid; grid-template-columns: 244px 1fr; height: 100vh; }
 .sidebar { display: flex; flex-direction: column; background: linear-gradient(180deg, var(--navy-900), var(--navy-950)); color: #cfdcec; padding: 18px 14px; }
 .brand { display: flex; align-items: center; gap: 12px; padding: 4px 8px 20px; }
-.brand-mark { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: rgba(255,255,255,.08); }
-.brand-mark svg { width: 26px; height: 26px; }
+.brand img { flex: none; }
 .brand-name { font-size: 13px; line-height: 1.25; }
 .brand-name b { display: block; color: #fff; font-size: 14.5px; font-weight: 700; letter-spacing: -.005em; }
 .nav { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
@@ -128,6 +127,7 @@ dl.facts dd { margin: 0; font-weight: 550; }
   background: radial-gradient(900px 500px at 15% 10%, #1d4f86 0%, transparent 60%), linear-gradient(160deg, var(--navy-800), var(--navy-950)); }
 .login-art::after { content: ""; position: absolute; right: -140px; bottom: -140px; width: 480px; height: 480px; border-radius: 50%; border: 60px solid rgba(125,184,236,.08); }
 .login-art .brand { padding: 0; }
+.login-seal { margin-bottom: 28px; opacity: .95; filter: drop-shadow(0 6px 18px rgba(0,0,0,.35)); }
 .login-art h2 { font-size: 34px; font-weight: 700; letter-spacing: -.03em; line-height: 1.12; max-width: 420px; }
 .login-art p { margin-top: 14px; color: #a9c0dc; max-width: 400px; font-size: 15px; line-height: 1.55; }
 .login-art small { color: #6f87a6; font-size: 12px; position: relative; z-index: 1; }

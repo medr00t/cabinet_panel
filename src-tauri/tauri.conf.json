@@ -18,7 +18,8 @@
         "minWidth": 800,
         "minHeight": 600,
         "maximized": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "backgroundColor": "#0d2745"
       }
     ],
     "security": {

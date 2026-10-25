@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, FileSpreadsheet, LayoutDashboard, LogOut, Users, Wallet } from 'lucide-react';
-import BrandMark from './components/ui/BrandMark';
+import Logo from './components/ui/Logo';
 import { DataProvider, useData } from './contexts/DataContext';
 import { NavProvider, Route, useNav } from './contexts/NavContext';
 import { useUser } from './contexts/UserContext';
@@ -63,7 +63,7 @@ const Shell = () => {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark"><BrandMark /></div>
+          <Logo size={46} />
           <div className="brand-name"><b>Centre Dentaire</b>Riad El Ansari</div>
         </div>
         <nav className="nav" aria-label="Navigation principale">

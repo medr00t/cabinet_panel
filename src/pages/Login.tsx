@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Delete, ShieldCheck } from 'lucide-react';
-import BrandMark from '../components/ui/BrandMark';
+import Logo from '../components/ui/Logo';
 import {
   User, discoverServer, errorMessage, getServerHost, login, logout, setServerHost, verifyDoctorAnswer,
 } from '../services/api';
@@ -103,10 +103,11 @@ const Login = () => {
     <div className="login">
       <div className="login-art">
         <div className="brand">
-          <div className="brand-mark"><BrandMark /></div>
+          <Logo size={46} />
           <div className="brand-name"><b>Centre Dentaire</b>Riad El Ansari</div>
         </div>
         <div style={{ position: 'relative', zIndex: 1 }}>
+          <Logo size={150} className="login-seal" />
           <h2>Le dossier de chaque patient, au même endroit.</h2>
           <p>Actes, devis, paiements et rendez-vous, partagés en temps réel entre la réception et le cabinet.</p>
         </div>
