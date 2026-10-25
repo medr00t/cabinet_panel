@@ -35,9 +35,9 @@ const Shell = () => {
   const backup = async (automatic: boolean) => {
     setBackingUp(true);
     try {
-      const r = await exportBackup();
-      toast.success(automatic ? 'Sauvegarde Excel enregistrée' : 'Sauvegarde Excel terminée',
-        `${r.patients} patients, ${r.treatments} actes, ${r.payments} paiements → ${r.path}`);
+      const r = await exportBackup(!automatic);
+      toast.success(automatic ? 'Sauvegarde Excel du mois mise à jour' : 'Sauvegarde Excel complète terminée',
+        `${r.newPatients} nouveau${r.newPatients > 1 ? 'x' : ''} patient${r.newPatients > 1 ? 's' : ''} ce mois, ${r.treatments} actes → ${r.path}`);
     } catch (e) {
       toast.error('Sauvegarde Excel impossible', errorMessage(e));
     } finally {

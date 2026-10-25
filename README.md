@@ -4,7 +4,8 @@ Desktop app (Tauri + React) for the clinic's reception and doctor: patient files
 card (N° Billet, couverture médicale, R.C., devis), the acts / quotes / payments ledger, a tooth chart
 (odontogramme) with per-tooth state and remarks, the official CNSS dental care sheet (prefilled, editable,
 printable and saved in the dossier), appointments and the daily cash register. All laptops share one MySQL
-database; the doctor's machine also writes a daily Excel backup after each login.
+database; the doctor's machine also keeps an Excel backup up to date after each login (one workbook per
+month, one sheet per day, one sheet for the month's new clients).
 
 Roles: **doctor** (everything) and **reception** (no deleting patients, acts or payments; limited
 appointment actions).

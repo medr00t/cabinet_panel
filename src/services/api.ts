@@ -206,8 +206,9 @@ export const setSetting = (name: 'cnss_inp' | 'cnss_city' | 'dentist_name', valu
 
 // ------------------------------------------------------------------ Excel backup (doctor only)
 
-export interface BackupResult { path: string; patients: number; treatments: number; payments: number; appointments: number; toothMarks: number }
-export const exportBackup = () => call<BackupResult>('export_backup');
+export interface BackupResult { path: string; files: number; patients: number; newPatients: number; treatments: number; payments: number; appointments: number; toothMarks: number }
+/** automatic (after login): this month and last month; full (button): every month that has data */
+export const exportBackup = (full = false) => call<BackupResult>('export_backup', { full });
 
 // ------------------------------------------------------------------ caisse
 

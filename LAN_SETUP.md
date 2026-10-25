@@ -53,9 +53,18 @@ de rendez-vous terminés et vue financière de tous les utilisateurs.
 
 ## Sauvegarde Excel (poste du docteur)
 
-À chaque connexion du docteur, l'application enregistre toutes les données (patients, actes, paiements,
-rendez-vous, remarques sur les dents) dans un classeur Excel :
-`Documents\Sauvegardes Cabinet\cabinet_AAAA-MM-JJ.xlsx` (un fichier par jour, remplacé à chaque connexion du
-jour). Le bouton **Sauvegarde Excel** du menu fait la même chose à la demande. Pour changer le dossier,
-ajouter `"backup_dir": "D:\\Sauvegardes"` dans `cabinet_config.json`. Si le fichier du jour est ouvert dans
-Excel, une copie avec l'heure est créée. Le fichier ne contient aucun mot de passe.
+À chaque connexion du docteur, l'application met à jour un classeur Excel **par mois** dans
+`Documents\Sauvegardes Cabinet\` : `cabinet_2026-10.xlsx`, `cabinet_2026-11.xlsx`…
+
+Chaque classeur contient :
+- **Résumé** : les totaux du mois et une ligne par jour ;
+- **Nouveaux patients** : tous les patients enregistrés pendant le mois, sur une seule feuille ;
+- **une feuille par jour** (`25-10`, `26-10`…) : rendez-vous, actes, paiements (avec le total encaissé par mode)
+  et nouveaux patients de la journée ;
+- **Tous les patients** et **Dents** : l'état complet, pour qu'un seul fichier suffise à tout retrouver.
+
+Le fichier du mois en cours est mis à jour à chaque connexion (la feuille du jour se complète, les jours
+précédents restent). À la fin du mois, un nouveau fichier commence et l'ancien est conservé tel quel.
+Le bouton **Sauvegarde Excel** du menu régénère tous les mois. Pour changer le dossier, ajouter
+`"backup_dir": "D:\\Sauvegardes"` dans `cabinet_config.json`. Si un fichier est ouvert dans Excel, une copie
+avec l'heure est créée. Les fichiers ne contiennent aucun mot de passe.

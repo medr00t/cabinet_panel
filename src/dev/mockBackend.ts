@@ -209,8 +209,8 @@ export async function mockInvoke(cmd: string, a: Obj): Promise<unknown> {
       return delay(null);
     case 'export_backup':
       requireDoctor(url);
-      return delay({ path: `Documents/Sauvegardes Cabinet/cabinet_${format(new Date(), 'yyyy-MM-dd')}.xlsx (aperçu navigateur)`, patients: patients.length,
-        treatments: treatments.length, payments: payments.length, appointments: appointments.length, tooth_marks: toothMarks.length });
+      return delay({ path: `Documents/Sauvegardes Cabinet/cabinet_${format(new Date(), 'yyyy-MM')}.xlsx (aperçu navigateur)`, files: a.full ? 3 : 2, patients: patients.length,
+        new_patients: 1, treatments: treatments.length, payments: payments.length, appointments: appointments.length, tooth_marks: toothMarks.length });
     case 'get_tooth_marks': return delay(toothMarks.filter((m) => m.patient_id === a.patientId));
     case 'set_tooth_mark': {
       const m = a.mark;

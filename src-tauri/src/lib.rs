@@ -916,37 +916,66 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn excel_backup_is_written_and_readable() {
+    async fn excel_backup_is_monthly_with_a_sheet_per_day() {
         let (doc, rec, _, rec_id) = sessions().await;
         let pid = add_patient(patient("Backup"), rec.db_url.clone()).await.unwrap();
-        let id = ledger::add_treatment(treatment(pid, rec_id, 300.0), 100.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+        let mut todays = treatment(pid, rec_id, 300.0);
+        todays.treatment_date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today_act = ledger::add_treatment(todays, 100.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+        // an act written in an older month (paper carnet re-entry) must land in that month's own workbook
+        let mut old = treatment(pid, rec_id, 80.0);
+        old.treatment_date = "2025-03-10".into();
+        old.act = "Détartrage ancien".into();
+        let old_act = ledger::add_treatment(old, 0.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
 
         let dir = std::env::temp_dir().join(format!("cabinet-backup-test-{}", std::process::id()));
         let staff: Vec<(i64, String)> = config::get().unwrap().users.iter().map(|u| (u.id, u.name.clone())).collect();
-        let result = backup::write_backup(&dir, &doc.db_url, &staff).expect("backup");
-        assert!(result.path.ends_with(".xlsx") && result.treatments >= 1 && result.patients >= 1);
+        let now = chrono::Local::now();
+        let month = now.format("%Y-%m").to_string();
 
-        // an .xlsx is a zip: check the sheets exist and today's data is inside
-        let file = std::fs::File::open(&result.path).unwrap();
-        let mut zip = zip::ZipArchive::new(file).unwrap();
-        let mut workbook = String::new();
-        std::io::Read::read_to_string(&mut zip.by_name("xl/workbook.xml").unwrap(), &mut workbook).unwrap();
-        for sheet in ["Résumé", "Patients", "Actes", "Paiements", "Rendez-vous", "Dents"] {
-            assert!(workbook.contains(sheet), "sheet {} missing", sheet);
+        let result = backup::write_backup(&dir, &doc.db_url, &staff, backup::BackupMode::Auto).expect("backup");
+        assert!(result.path.ends_with(&format!("cabinet_{}.xlsx", month)), "{}", result.path);
+        assert!(result.new_patients >= 1 && result.treatments >= 1);
+
+        let read = |path: &std::path::Path, part: &str| -> String {
+            let mut zip = zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+            let mut out = String::new();
+            std::io::Read::read_to_string(&mut zip.by_name(part).unwrap(), &mut out).unwrap();
+            out
+        };
+        let this_month = std::path::PathBuf::from(&result.path);
+        let workbook = read(&this_month, "xl/workbook.xml");
+        for sheet in ["Résumé", "Nouveaux patients", "Tous les patients", "Dents", &now.format("%d-%m").to_string()] {
+            assert!(workbook.contains(sheet), "sheet {} missing in {}", sheet, workbook);
         }
-        let mut strings = String::new();
-        std::io::Read::read_to_string(&mut zip.by_name("xl/sharedStrings.xml").unwrap(), &mut strings).unwrap();
-        assert!(strings.contains("TestBackup") && strings.contains("Dévitalisation"), "patient/act missing from the workbook");
-        // the passwords never end up in the file
-        assert!(!strings.contains(&config::get().unwrap().users[0].mysql_password));
+        let strings = read(&this_month, "xl/sharedStrings.xml");
+        assert!(strings.contains("TestBackup") && strings.contains("Dévitalisation"), "patient/act missing");
+        assert!(!strings.contains("Détartrage ancien"), "an old act must not be in this month's file");
+        assert!(!strings.contains(&config::get().unwrap().users[0].mysql_password), "passwords must never be exported");
 
-        // running it twice the same day replaces the file instead of piling up copies
-        let again = backup::write_backup(&dir, &doc.db_url, &staff).unwrap();
+        // the older month got its own workbook (it had data and no file yet)
+        let old_file = dir.join("cabinet_2025-03.xlsx");
+        assert!(old_file.exists(), "missing workbook for the older month");
+        assert!(read(&old_file, "xl/workbook.xml").contains("10-03"), "no sheet for 10 March");
+        assert!(read(&old_file, "xl/sharedStrings.xml").contains("Détartrage ancien"));
+
+        // a second run the same day updates the same files instead of piling up copies
+        let again = backup::write_backup(&dir, &doc.db_url, &staff, backup::BackupMode::Auto).unwrap();
         assert_eq!(again.path, result.path);
-        assert_eq!(std::fs::read_dir(&dir).unwrap().filter(|e| e.as_ref().unwrap().path().extension().map_or(false, |x| x == "xlsx")).count(), 1);
+        let xlsx = |dir: &std::path::Path| std::fs::read_dir(dir).unwrap().filter(|e| e.as_ref().unwrap().path().extension().map_or(false, |x| x == "xlsx")).count();
+        assert_eq!(xlsx(&dir), result.files, "one workbook per month, no duplicates");
+        let before = xlsx(&dir);
+        backup::write_backup(&dir, &doc.db_url, &staff, backup::BackupMode::Full).unwrap();
+        assert_eq!(xlsx(&dir), before, "a full backup rewrites the same month files");
+        // the older month is left untouched by automatic runs: change it on disk and run Auto again
+        let stamp = std::fs::metadata(&old_file).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        backup::write_backup(&dir, &doc.db_url, &staff, backup::BackupMode::Auto).unwrap();
+        assert_eq!(std::fs::metadata(&old_file).unwrap().modified().unwrap(), stamp, "old months are kept as they were");
 
         std::fs::remove_dir_all(&dir).ok();
-        ledger::delete_treatment(id, doc.db_url.clone()).await.unwrap();
+        ledger::delete_treatment(today_act, doc.db_url.clone()).await.unwrap();
+        ledger::delete_treatment(old_act, doc.db_url.clone()).await.unwrap();
         delete_patient(pid, doc.db_url.clone()).await.unwrap();
     }
 
