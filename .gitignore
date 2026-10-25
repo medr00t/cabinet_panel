@@ -27,4 +27,5 @@ dist-ssr
 server/.env
 
 # Windows installer output
-release-windows/
+release-windows/*
+!release-windows/*.exe
