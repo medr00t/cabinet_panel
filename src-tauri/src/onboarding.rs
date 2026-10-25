@@ -104,6 +104,13 @@ fn local_address() -> Option<String> {
 #[tauri::command]
 pub async fn server_install(app: AppHandle, passphrase: String) -> Result<ServerInfo, String> {
     if passphrase.chars().count() < 8 { return Err("Le mot de passe du cabinet doit faire au moins 8 caractères".to_string()); }
+    if dbserver::is_installed() {
+        // already installed here: the cabinet password typed now becomes the one of the database accounts
+        let (d, r) = (derive(&passphrase, "doctor"), derive(&passphrase, "reception"));
+        tokio::task::spawn_blocking(move || dbserver::set_passwords(&d, &r)).await.map_err(|e| format!("Interrompu: {}", e))??;
+        let s = dbserver::read_state()?;
+        return Ok(ServerInfo { version: s.version, port: s.port, address: local_address() });
+    }
     let req = dbserver::InstallRequest {
         doctor_password: derive(&passphrase, "doctor"),
         reception_password: derive(&passphrase, "reception"),

@@ -256,6 +256,19 @@ fn alnum(p: &str) -> Result<(), String> {
 }
 
 /// Everything, in order: download, unpack, initialise, start, create the database and accounts, start with Windows.
+/// Gives the two accounts new passwords (the cabinet password was changed from the wizard of this laptop).
+pub fn set_passwords(doctor: &str, reception: &str) -> Result<(), String> {
+    alnum(doctor)?;
+    alnum(reception)?;
+    start_if_needed()?;
+    let s = read_state()?;
+    let mut root = Conn::new(opts(s.port, Some(&s.root_password), None)).map_err(|e| format!("Connexion à la base: {}", e))?;
+    for (user, pw) in [(DOCTOR_USER, doctor), (RECEPTION_USER, reception)] {
+        root.query_drop(format!("ALTER USER '{}'@'%' IDENTIFIED BY '{}'", user, pw)).map_err(|e| format!("Changement du mot de passe: {}", e))?;
+    }
+    root.query_drop("FLUSH PRIVILEGES").map_err(|e| e.to_string())
+}
+
 pub fn install(req: &InstallRequest, emit: &dyn Fn(Progress)) -> Result<InstallResult, String> {
     alnum(&req.doctor_password)?;
     alnum(&req.reception_password)?;
@@ -395,6 +408,10 @@ mod tests {
         let n: Option<i64> = root.query_first("SELECT COUNT(*) FROM patients").unwrap();
         assert_eq!(n, Some(0));
         drop(root);
+        set_passwords("NewDoctor1234", "NewReception1234").expect("set passwords");
+        assert!(Conn::new(Opts::from_url(&url("guestx", "DoctorPass123")).unwrap()).is_err(), "old password must stop working");
+        Conn::new(Opts::from_url(&url("guestx", "NewDoctor1234")).unwrap()).expect("new doctor password");
+        Conn::new(Opts::from_url(&url("reception", "NewReception1234")).unwrap()).expect("new reception password");
         stop().ok();
         let t = Instant::now();
         while port_open(3399) && t.elapsed() < Duration::from_secs(60) { std::thread::sleep(Duration::from_millis(300)); }

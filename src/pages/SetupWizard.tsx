@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Database, FileSpreadsheet, Laptop,
 import Logo from '../components/ui/Logo';
 import {
   FoundBackup, Role, ServerInfo, ServerProgress, SetupStatus, clientCheck, errorMessage, onServerProgress, serverInstall,
-  setServerHost, serverStart, setupFindBackups, setupRestore, setupSaveConfig, setupStatus,
+  setServerHost, setupFindBackups, setupRestore, setupSaveConfig, setupStatus,
 } from '../services/api';
 
 type Step = 'mode' | 'who' | 'install' | 'backups' | 'client' | 'done';
@@ -32,7 +32,7 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
   const validate = (): string => {
     if (!/^\d{4}$/.test(code)) return 'Le code doit contenir exactement 4 chiffres.';
     if (pass.length < 8) return 'Le mot de passe du cabinet doit faire au moins 8 caractères.';
-    if (host && !status?.serverInstalled && pass !== pass2) return 'Les deux mots de passe ne sont pas identiques.';
+    if (host && pass !== pass2) return 'Les deux mots de passe ne sont pas identiques.';
     if (role === 'doctor' && !answer.trim()) return 'Choisissez la réponse de sécurité du docteur.';
     return '';
   };
@@ -52,7 +52,7 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
         if (r.ok && r.host) setServerHost(r.host);
         return;
       }
-      if (status?.serverInstalled) { await serverStart(); await save(); setStep('done'); return; }
+      if (status?.serverInstalled) { await serverInstall(pass); await save(); setStep('done'); return; }
       setStep('install');
       const stop = await onServerProgress(setProgress);
       try { setInfo(await serverInstall(pass)); } finally { stop(); }
@@ -147,13 +147,13 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
                 )}
                 <div className="field"><label htmlFor="sw-pass">Mot de passe du cabinet</label>
                   <input id="sw-pass" className="input" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
-                  <span className="hint">{host && !status?.serverInstalled ? 'Choisissez-le maintenant (8 caractères minimum) : le même sera demandé sur les autres postes.' : 'Le même que sur le poste qui garde la base de données.'}</span></div>
-                {host && !status?.serverInstalled && (
+                  <span className="hint">{host ? 'Choisissez-le maintenant (8 caractères minimum) : le même sera demandé sur les autres postes.' : 'Le même que sur le poste qui garde la base de données.'}</span></div>
+                {host && (
                   <div className="field"><label htmlFor="sw-pass2">Confirmer le mot de passe du cabinet</label>
                     <input id="sw-pass2" className="input" type="password" autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} /></div>
                 )}
                 {error && <span className="error" style={{ color: 'var(--bad)', fontSize: 13, fontWeight: 500 }}>{error}</span>}
-                <button className="btn btn-block" type="submit" disabled={busy}>{host ? (status?.serverInstalled ? 'Terminer' : 'Installer la base de données') : 'Chercher le serveur'} <ArrowRight /></button>
+                <button className="btn btn-block" type="submit" disabled={busy}>{host ? (status?.serverInstalled ? 'Enregistrer' : 'Installer la base de données') : 'Chercher le serveur'} <ArrowRight /></button>
                 <button type="button" className="btn btn-ghost btn-block" onClick={() => { setError(''); setStep('mode'); }}><ArrowLeft /> Retour</button>
               </form>
             </>
