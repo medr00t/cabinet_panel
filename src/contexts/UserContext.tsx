@@ -1,52 +1,29 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { User, clearAuth } from '../services/database';
+import { createContext, useContext, useMemo, useState, ReactNode } from 'react';
+import { User, logout as apiLogout } from '../services/api';
 
-interface UserContextType {
+interface UserContextValue {
   user: User | null;
-  login: (user: User) => void;
-  logout: () => void;
-  isAuthenticated: boolean;
+  isDoctor: boolean;
+  signIn: (user: User) => void;
+  signOut: () => void;
 }
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+const UserContext = createContext<UserContextValue | null>(null);
 
-export const useUser = () => {
-  const context = useContext(UserContext);
-  if (context === undefined) {
-    throw new Error('useUser must be used within a UserProvider');
-  }
-  return context;
+export const useUser = (): UserContextValue => {
+  const ctx = useContext(UserContext);
+  if (!ctx) throw new Error('useUser must be used inside <UserProvider>');
+  return ctx;
 };
 
-interface UserProviderProps {
-  children: ReactNode;
-}
-
-export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
+// The session lives in memory only: closing the app logs out, nothing sensitive goes to localStorage.
+export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-
-  const login = (user: User) => {
-    console.log('[DEBUG] UserContext login called with:', user);
-    setUser(user);
-    console.log('[DEBUG] User set in context, isAuthenticated should now be:', true);
-  };
-
-  const logout = () => {
-    setUser(null);
-    clearAuth();
-    localStorage.removeItem('currentUser'); // legacy key from older versions
-  };
-
-  const isAuthenticated = user !== null;
-
-  const value: UserContextType = {
+  const value = useMemo<UserContextValue>(() => ({
     user,
-    login,
-    logout,
-    isAuthenticated,
-  };
-
+    isDoctor: user?.role === 'doctor',
+    signIn: setUser,
+    signOut: () => { apiLogout(); setUser(null); },
+  }), [user]);
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 };
-
-export default UserContext;

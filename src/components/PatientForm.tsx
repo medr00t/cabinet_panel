@@ -1,345 +1,170 @@
-import { useState, useEffect } from 'react';
-import { X, User, Calendar, Phone, Mail, AlertTriangle, FileText, Pill, UserCheck } from 'lucide-react';
-import { Patient } from '../services/database';
-import DateInput from './DateInput';
+import { useEffect, useState } from 'react';
+import Modal from './ui/Modal';
+import Field from './ui/Field';
+import { today } from '../utils/format';
+import { INSURANCES } from '../constants';
+import { Patient, createPatient, errorMessage, nextBilletNumber, savePatient } from '../services/api';
 
 interface PatientFormProps {
-  patient?: Patient | null;
-  onSave: (patient: Omit<Patient, 'id'>) => void;
-  onCancel: () => void;
+  patient?: Patient;
+  onClose: () => void;
+  onSaved: (id: number) => void;
 }
 
-const PatientForm = ({ patient, onSave, onCancel }: PatientFormProps) => {
-  const [formData, setFormData] = useState({
-    firstName: patient?.firstName || '',
-    lastName: patient?.lastName || '',
-    dateOfBirth: patient?.dateOfBirth || '',
-    gender: patient?.gender || 'male' as const,
-    phone: patient?.phone || '',
-    email: patient?.email || '',
-    address: patient?.address || '',
-    allergies: patient?.allergies || '',
-    medicalHistory: patient?.medicalHistory || '',
-    medications: patient?.medications || '',
-    emergencyContact: patient?.emergencyContact || '',
-    emergencyPhone: patient?.emergencyPhone || '',
-    notes: patient?.notes || ''
+const blank = (v?: string) => v ?? '';
+
+const PatientForm = ({ patient, onClose, onSaved }: PatientFormProps) => {
+  const editing = patient?.id !== undefined;
+  const [f, setF] = useState({
+    billetNumber: blank(patient?.billetNumber),
+    lastName: blank(patient?.lastName),
+    firstName: blank(patient?.firstName),
+    dateOfBirth: blank(patient?.dateOfBirth),
+    gender: patient?.gender ?? 'male',
+    phone: blank(patient?.phone),
+    address: blank(patient?.address),
+    insurance: blank(patient?.insurance),
+    medicalHistory: blank(patient?.medicalHistory),
+    notes: blank(patient?.notes),
+    email: blank(patient?.email),
+    allergies: blank(patient?.allergies),
+    medications: blank(patient?.medications),
+    emergencyContact: blank(patient?.emergencyContact),
+    emergencyPhone: blank(patient?.emergencyPhone),
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => {
+    setF((s) => ({ ...s, [k]: v }));
+    setErrors((e) => ({ ...e, [k]: '' }));
+  };
 
-  // Handle ESC key to close modal
+  // suggest the next free N° Billet for a new card, unless the user already typed one
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onCancel();
-      }
-    };
+    if (editing) return;
+    let cancelled = false;
+    nextBilletNumber().then((n) => { if (!cancelled) setF((s) => (s.billetNumber ? s : { ...s, billetNumber: n })); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [editing]);
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onCancel]);
+  const submit = async () => {
+    const e: Record<string, string> = {};
+    if (!f.lastName.trim()) e.lastName = 'Obligatoire';
+    if (!f.firstName.trim()) e.firstName = 'Obligatoire';
+    if (f.phone.replace(/\D/g, '').length < 6) e.phone = 'Numéro de téléphone invalide';
+    if (f.dateOfBirth && f.dateOfBirth > today()) e.dateOfBirth = 'Date dans le futur';
+    if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) e.email = 'Adresse e-mail invalide';
+    setErrors(e);
+    if (Object.keys(e).length) return;
 
-  // Handle overlay click
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onCancel();
+    const payload: Patient = {
+      ...patient,
+      billetNumber: f.billetNumber.trim() || undefined,
+      lastName: f.lastName.trim(), firstName: f.firstName.trim(), gender: f.gender,
+      dateOfBirth: f.dateOfBirth, phone: f.phone.trim(),
+      address: f.address.trim() || undefined, insurance: f.insurance.trim() || undefined,
+      medicalHistory: f.medicalHistory.trim() || undefined, notes: f.notes.trim() || undefined,
+      email: f.email.trim() || undefined, allergies: f.allergies.trim() || undefined,
+      medications: f.medications.trim() || undefined,
+      emergencyContact: f.emergencyContact.trim() || undefined, emergencyPhone: f.emergencyPhone.trim() || undefined,
+    };
+    setBusy(true);
+    setFormError('');
+    try {
+      if (editing) { await savePatient(patient!.id!, payload); onSaved(patient!.id!); }
+      else onSaved(await createPatient(payload));
+    } catch (err) {
+      const msg = errorMessage(err);
+      if (/billet/i.test(msg)) setErrors({ billetNumber: msg }); else setFormError(msg);
+      setBusy(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave({
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      dateOfBirth: formData.dateOfBirth,
-      gender: formData.gender,
-      phone: formData.phone,
-      email: formData.email || undefined,
-      address: formData.address || undefined,
-      allergies: formData.allergies || undefined,
-      medicalHistory: formData.medicalHistory || undefined,
-      medications: formData.medications || undefined,
-      emergencyContact: formData.emergencyContact || undefined,
-      emergencyPhone: formData.emergencyPhone || undefined,
-      notes: formData.notes || undefined
-    });
-  };
-
-  const handleInputChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
   return (
-    <div style={{zIndex:1000, marginTop: '35px' , marginBottom: '35px'}}
-      className="fixed inset-0 bg-black bg-opacity-60 flex items-start justify-center z-[1000] p-2 pt-4 overflow-y-auto"
-      onClick={handleOverlayClick}
+    <Modal
+      title={editing ? 'Modifier le patient' : 'Nouveau patient'}
+      subtitle="Les informations de la fiche papier du patient."
+      size="wide" onClose={onClose} onSubmit={submit}
+      footer={<>
+        {formError && <span className="error" style={{ color: 'var(--bad)', marginRight: 'auto', alignSelf: 'center', fontSize: 13 }}>{formError}</span>}
+        <button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button>
+        <button type="submit" className="btn" disabled={busy}>{editing ? 'Enregistrer' : 'Créer le dossier'}</button>
+      </>}
     >
-      <div 
-        className="bg-white rounded-xl shadow-2xl w-full max-w-sm h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-blue-600 text-white">
-          <div className="flex items-center space-x-3">
-            <User className="h-5 w-5" />
-            <h2 className="text-lg font-semibold">
-              {patient ? 'Modifier le Patient' : 'Nouveau Patient'}
-            </h2>
-          </div>
-          <button
-            onClick={onCancel}
-            className="text-blue-100 hover:text-white transition-colors p-2 rounded hover:bg-blue-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
+      <div className="stack">
+        <div className="section-title">Identité</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 16 }}>
+          <Field label="N° Billet" htmlFor="billet" error={errors.billetNumber}>
+            <input id="billet" className="input num" value={f.billetNumber} onChange={(e) => set('billetNumber', e.target.value)} aria-invalid={!!errors.billetNumber} />
+          </Field>
+          <Field label="Nom" htmlFor="ln" required error={errors.lastName}>
+            <input id="ln" data-autofocus className="input" value={f.lastName} onChange={(e) => set('lastName', e.target.value)} aria-invalid={!!errors.lastName} />
+          </Field>
+          <Field label="Prénom" htmlFor="fn" required error={errors.firstName}>
+            <input id="fn" className="input" value={f.firstName} onChange={(e) => set('firstName', e.target.value)} aria-invalid={!!errors.firstName} />
+          </Field>
+        </div>
+        <div className="grid-3">
+          <Field label="Date de naissance" htmlFor="dob" error={errors.dateOfBirth}>
+            <input id="dob" className="input" type="date" value={f.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} aria-invalid={!!errors.dateOfBirth} />
+          </Field>
+          <Field label="Sexe">
+            <div className="segmented" role="group" aria-label="Sexe">
+              <button type="button" aria-pressed={f.gender === 'male'} onClick={() => set('gender', 'male')}>H</button>
+              <button type="button" aria-pressed={f.gender === 'female'} onClick={() => set('gender', 'female')}>F</button>
+            </div>
+          </Field>
+          <Field label="Téléphone" htmlFor="tel" required error={errors.phone}>
+            <input id="tel" className="input" inputMode="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} aria-invalid={!!errors.phone} />
+          </Field>
+        </div>
+        <div className="grid-2">
+          <Field label="Adresse" htmlFor="addr">
+            <input id="addr" className="input" value={f.address} onChange={(e) => set('address', e.target.value)} />
+          </Field>
+          <Field label="Couverture médicale" htmlFor="ins">
+            <input id="ins" className="input" list="insurances" value={f.insurance} onChange={(e) => set('insurance', e.target.value)} placeholder="CNSS, CNOPS, AMO…" />
+            <datalist id="insurances">{INSURANCES.map((i) => <option key={i} value={i} />)}</datalist>
+          </Field>
         </div>
 
-        {/* Form Content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-          <form id="patient-form" onSubmit={handleSubmit} className="p-4 space-y-4">
-            
-            {/* Informations Personnelles */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2 mb-3">
-              <User className="h-5 w-5 text-blue-600" />
-              <h3 className="text-lg font-medium text-gray-800">Informations Personnelles</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Prénom *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.firstName}
-                  onChange={(e) => handleInputChange('firstName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Prénom du patient"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nom *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.lastName}
-                  onChange={(e) => handleInputChange('lastName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Nom de famille"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Calendar className="inline h-4 w-4 mr-1" />
-                  Date de Naissance * (format: jj/mm/aaaa)
-                </label>
-                <DateInput
-                  required
-                  value={formData.dateOfBirth}
-                  onChange={(value) => handleInputChange('dateOfBirth', value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Sexe *
-                </label>
-                <select
-                  required
-                  value={formData.gender}
-                  onChange={(e) => handleInputChange('gender', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="male">Homme</option>
-                  <option value="female">Femme</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Informations de Contact */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2 mb-3">
-              <Phone className="h-5 w-5 text-green-600" />
-              <h3 className="text-lg font-medium text-gray-800">Informations de Contact</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Phone className="inline h-4 w-4 mr-1" />
-                  Téléphone *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="06 12 34 56 78"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Mail className="inline h-4 w-4 mr-1" />
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="email@exemple.com"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Address */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Adresse
-              </label>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => handleInputChange('address', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="Adresse complète"
-              />
-            </div>
-          </div>
-
-          {/* Medical Information */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2 mb-3">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-              <h3 className="text-lg font-medium text-gray-800">Informations Médicales</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <AlertTriangle className="inline h-4 w-4 mr-1 text-red-500" />
-                  Allergies
-                </label>
-                <textarea
-                  value={formData.allergies}
-                  onChange={(e) => handleInputChange('allergies', e.target.value)}
-                  rows={1}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  placeholder="Allergies médicamenteuses, alimentaires, etc."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <FileText className="inline h-4 w-4 mr-1 text-blue-500" />
-                  Antécédents Médicaux
-                </label>
-                <textarea
-                  value={formData.medicalHistory}
-                  onChange={(e) => handleInputChange('medicalHistory', e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Maladies, opérations, traitements antérieurs..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Pill className="inline h-4 w-4 mr-1 text-green-500" />
-                  Médicaments Actuels
-                </label>
-                <textarea
-                  value={formData.medications}
-                  onChange={(e) => handleInputChange('medications', e.target.value)}
-                  rows={1}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Médicaments pris régulièrement, posologie..."
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Emergency Contact */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2 mb-3">
-              <UserCheck className="h-5 w-5 text-orange-600" />
-              <h3 className="text-lg font-medium text-gray-800">Contact d'Urgence</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <User className="inline h-4 w-4 mr-1" />
-                  Nom du Contact
-                </label>
-                <input
-                  type="text"
-                  value={formData.emergencyContact}
-                  onChange={(e) => handleInputChange('emergencyContact', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  placeholder="Nom et prénom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Phone className="inline h-4 w-4 mr-1" />
-                  Téléphone d'Urgence
-                </label>
-                <input
-                  type="tel"
-                  value={formData.emergencyPhone}
-                  onChange={(e) => handleInputChange('emergencyPhone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  placeholder="06 12 34 56 78"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Notes Additionnelles
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => handleInputChange('notes', e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                placeholder="Autres informations importantes..."
-              />
-            </div>
-          </div>
-
-          </form>
+        <div className="section-title">Dossier clinique</div>
+        <div className="grid-2">
+          <Field label="R.C. — renseignements cliniques" htmlFor="rc">
+            <textarea id="rc" className="textarea" value={f.medicalHistory} onChange={(e) => set('medicalHistory', e.target.value)} placeholder="Antécédents, motif de consultation…" />
+          </Field>
+          <Field label="Devis / plan de traitement" htmlFor="plan">
+            <textarea id="plan" className="textarea" value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Soins prévus…" />
+          </Field>
         </div>
-        
-        {/* Footer Actions */}
-        <div className="flex justify-end space-x-3 p-4 border-t border-gray-200 bg-gray-50">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            form="patient-form"
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            {patient ? 'Modifier le Patient' : 'Ajouter le Patient'}
-          </button>
-        </div>
+
+        <details>
+          <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13, color: 'var(--text-2)', padding: '4px 0' }}>Autres informations</summary>
+          <div className="stack" style={{ marginTop: 14 }}>
+            <div className="grid-2">
+              <Field label="E-mail" htmlFor="mail" error={errors.email}>
+                <input id="mail" className="input" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} aria-invalid={!!errors.email} />
+              </Field>
+              <Field label="Allergies" htmlFor="all">
+                <input id="all" className="input" value={f.allergies} onChange={(e) => set('allergies', e.target.value)} />
+              </Field>
+            </div>
+            <Field label="Médicaments en cours" htmlFor="med">
+              <input id="med" className="input" value={f.medications} onChange={(e) => set('medications', e.target.value)} />
+            </Field>
+            <div className="grid-2">
+              <Field label="Personne à prévenir" htmlFor="ec">
+                <input id="ec" className="input" value={f.emergencyContact} onChange={(e) => set('emergencyContact', e.target.value)} />
+              </Field>
+              <Field label="Téléphone (urgence)" htmlFor="ep">
+                <input id="ep" className="input" inputMode="tel" value={f.emergencyPhone} onChange={(e) => set('emergencyPhone', e.target.value)} />
+              </Field>
+            </div>
+          </div>
+        </details>
       </div>
-    </div>
+    </Modal>
   );
 };
 

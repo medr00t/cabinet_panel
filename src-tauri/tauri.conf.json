@@ -12,13 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "Centre Dentaire Riad El Ansari - Système de Gestion",
+        "title": "Centre Dentaire Riad El Ansari",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
         "maximized": true,
-        "fullscreen": true
+        "fullscreen": false
       }
     ],
     "security": {

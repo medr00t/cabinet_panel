@@ -1,89 +1,57 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from 'react';
+import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react';
 
-export interface Toast {
-  id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  title: string;
-  message?: string;
-  duration?: number;
+type Kind = 'success' | 'error' | 'warning' | 'info';
+interface Toast { id: number; kind: Kind; title: string; message?: string }
+
+interface ToastApi {
+  success: (title: string, message?: string) => void;
+  error: (title: string, message?: string) => void;
+  warning: (title: string, message?: string) => void;
+  info: (title: string, message?: string) => void;
 }
 
-interface ToastContextType {
-  toasts: Toast[];
-  addToast: (toast: Omit<Toast, 'id'>) => void;
-  removeToast: (id: string) => void;
-  showSuccess: (title: string, message?: string) => void;
-  showError: (title: string, message?: string) => void;
-  showWarning: (title: string, message?: string) => void;
-  showInfo: (title: string, message?: string) => void;
-}
+const ToastContext = createContext<ToastApi | null>(null);
 
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
-
-export const useToast = () => {
-  const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error('useToast must be used within a ToastProvider');
-  }
-  return context;
+export const useToast = (): ToastApi => {
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error('useToast must be used inside <ToastProvider>');
+  return ctx;
 };
 
-interface ToastProviderProps {
-  children: ReactNode;
-}
+const icons = { success: CheckCircle2, error: XCircle, warning: AlertTriangle, info: Info };
+let seq = 0;
 
-export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
+export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
+  const push = useCallback((kind: Kind, title: string, message?: string) => {
+    const id = ++seq;
+    setToasts((t) => [...t.slice(-3), { id, kind, title, message }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'error' ? 7000 : 4000);
   }, []);
 
-  const addToast = useCallback((toastData: Omit<Toast, 'id'>) => {
-    const id = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    const toast: Toast = {
-      id,
-      duration: 4000,
-      ...toastData,
-    };
-
-    setToasts(prev => [...prev, toast]);
-
-    // Auto remove toast after duration
-    setTimeout(() => {
-      removeToast(id);
-    }, toast.duration);
-  }, [removeToast]);
-
-  const showSuccess = useCallback((title: string, message?: string) => {
-    addToast({ type: 'success', title, message });
-  }, [addToast]);
-
-  const showError = useCallback((title: string, message?: string) => {
-    addToast({ type: 'error', title, message });
-  }, [addToast]);
-
-  const showWarning = useCallback((title: string, message?: string) => {
-    addToast({ type: 'warning', title, message });
-  }, [addToast]);
-
-  const showInfo = useCallback((title: string, message?: string) => {
-    addToast({ type: 'info', title, message });
-  }, [addToast]);
-
-  const value: ToastContextType = {
-    toasts,
-    addToast,
-    removeToast,
-    showSuccess,
-    showError,
-    showWarning,
-    showInfo,
-  };
+  const api = useMemo<ToastApi>(() => ({
+    success: (t, m) => push('success', t, m),
+    error: (t, m) => push('error', t, m),
+    warning: (t, m) => push('warning', t, m),
+    info: (t, m) => push('info', t, m),
+  }), [push]);
 
   return (
-    <ToastContext.Provider value={value}>
+    <ToastContext.Provider value={api}>
       {children}
+      <div className="toasts" role="status" aria-live="polite">
+        {toasts.map(({ id, kind, title, message }) => {
+          const Icon = icons[kind];
+          return (
+            <div key={id} className={`toast toast-${kind}`}>
+              <Icon />
+              <div><div className="t">{title}</div>{message && <div className="m">{message}</div>}</div>
+            </div>
+          );
+        })}
+      </div>
     </ToastContext.Provider>
   );
 };

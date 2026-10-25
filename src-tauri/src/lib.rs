@@ -1,4 +1,5 @@
 mod config;
+mod ledger;
 
 use serde::{Deserialize, Serialize};
 use mysql::*;
@@ -76,6 +77,10 @@ pub struct Patient {
     pub first_name: String,
     pub last_name: String,
     pub phone: String,
+    #[serde(default)]
+    pub billet_number: Option<String>,
+    #[serde(default)]
+    pub insurance: Option<String>,
     pub email: Option<String>,
     pub date_of_birth: String,
     pub gender: String,
@@ -118,6 +123,12 @@ pub struct Payment {
     pub id: Option<i64>,
     pub patient_id: i64,
     pub appointment_id: Option<i64>,
+    #[serde(default)]
+    pub treatment_id: Option<i64>,
+    #[serde(default)]
+    pub patient_name: Option<String>,
+    #[serde(default)]
+    pub treatment_act: Option<String>,
     pub amount: f64,
     pub payment_method: String,
     pub notes: Option<String>,
@@ -206,8 +217,8 @@ async fn add_patient(patient: Patient, db_url: String) -> Result<i64, String> {
     // Insert patient into MySQL
     let query = r"
         INSERT INTO patients 
-        (first_name, last_name, phone, email, date_of_birth, gender, address, allergies, medical_history, medications, emergency_contact, emergency_phone, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        (first_name, last_name, phone, billet_number, insurance, email, date_of_birth, gender, address, allergies, medical_history, medications, emergency_contact, emergency_phone, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ";
     
     // Build parameter values
@@ -215,6 +226,8 @@ async fn add_patient(patient: Patient, db_url: String) -> Result<i64, String> {
     params.push(patient.first_name.into());
     params.push(patient.last_name.into());
     params.push(patient.phone.into());
+    params.push(ledger::blank_to_none(patient.billet_number).into());
+    params.push(ledger::blank_to_none(patient.insurance).into());
     params.push(patient.email.into());
     params.push(patient.date_of_birth.into());
     params.push(patient.gender.into());
@@ -235,7 +248,7 @@ async fn add_patient(patient: Patient, db_url: String) -> Result<i64, String> {
             Ok(patient_id)
         }
         Err(e) => {
-            let error_msg = format!("Erreur lors de l'insertion en base de données: {}", e);
+            let error_msg = ledger::friendly_db_error("Erreur lors de l'insertion en base de données", &e);
             println!("[ERROR] {}", error_msg);
             Err(error_msg)
         }
@@ -250,7 +263,7 @@ async fn get_patients(db_url: String) -> Result<Vec<Patient>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     
     // Query patients from MySQL
-    let query = "SELECT id, first_name, last_name, phone, email, date_of_birth, gender, address, allergies, medical_history, medications, emergency_contact, emergency_phone, notes, created_at FROM patients ORDER BY created_at DESC";
+    let query = "SELECT id, first_name, last_name, phone, billet_number, insurance, email, date_of_birth, gender, address, allergies, medical_history, medications, emergency_contact, emergency_phone, notes, created_at FROM patients ORDER BY created_at DESC";
     
     let patients_result: Result<Vec<Patient>, mysql::Error> = conn.query_map(query, |mut row: mysql::Row| {
         Patient {
@@ -258,6 +271,8 @@ async fn get_patients(db_url: String) -> Result<Vec<Patient>, String> {
             first_name: row.take::<String, _>("first_name").unwrap_or_default(),
             last_name: row.take::<String, _>("last_name").unwrap_or_default(),
             phone: row.take::<String, _>("phone").unwrap_or_default(),
+            billet_number: row.take::<Option<String>, _>("billet_number").unwrap_or(None),
+            insurance: row.take::<Option<String>, _>("insurance").unwrap_or(None),
             email: row.take::<Option<String>, _>("email").unwrap_or(None),
             date_of_birth: row.take::<String, _>("date_of_birth").unwrap_or_default(),
             gender: row.take::<String, _>("gender").unwrap_or_default(),
@@ -292,23 +307,38 @@ async fn update_patient(id: i64, patient: Patient, db_url: String) -> Result<(),
     }
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_drop(
-        r"UPDATE patients SET first_name = ?, last_name = ?, phone = ?, email = ?, date_of_birth = ?, gender = ?,
+        r"UPDATE patients SET first_name = ?, last_name = ?, phone = ?, billet_number = ?, insurance = ?, email = ?, date_of_birth = ?, gender = ?,
           address = ?, allergies = ?, medical_history = ?, medications = ?, emergency_contact = ?,
           emergency_phone = ?, notes = ? WHERE id = ?",
         Params::Positional(vec![
-            patient.first_name.into(), patient.last_name.into(), patient.phone.into(), patient.email.into(),
-            patient.date_of_birth.into(), patient.gender.into(), patient.address.into(), patient.allergies.into(),
+            patient.first_name.into(), patient.last_name.into(), patient.phone.into(),
+            ledger::blank_to_none(patient.billet_number).into(), ledger::blank_to_none(patient.insurance).into(),
+            patient.email.into(), patient.date_of_birth.into(), patient.gender.into(), patient.address.into(), patient.allergies.into(),
             patient.medical_history.into(), patient.medications.into(), patient.emergency_contact.into(),
             patient.emergency_phone.into(), patient.notes.into(), id.into(),
         ]),
-    ).map_err(|e| format!("Erreur lors de la modification du patient: {}", e))
+    ).map_err(|e| ledger::friendly_db_error("Erreur lors de la modification du patient", &e))
 }
 
 #[tauri::command]
 async fn delete_patient(id: i64, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
-    conn.exec_drop("DELETE FROM patients WHERE id = ?", (id,))
-        .map_err(|e| format!("Erreur lors de la suppression du patient: {}", e))
+    let mut tx = conn.start_transaction(TxOpts::default()).map_err(|e| format!("Transaction: {}", e))?;
+    // A patient with acts or payments keeps its financial history: refuse instead of orphaning it.
+    let ledger_rows: Option<i64> = tx
+        .exec_first(
+            "SELECT (SELECT COUNT(*) FROM treatments WHERE patient_id = ?) + (SELECT COUNT(*) FROM payments WHERE patient_id = ?)",
+            (id, id),
+        )
+        .map_err(|e| format!("Erreur lors de la suppression du patient: {}", e))?;
+    if ledger_rows.unwrap_or(0) > 0 {
+        return Err("Ce patient a des actes ou des paiements enregistrés : suppression impossible".to_string());
+    }
+    tx.exec_drop("DELETE FROM appointments WHERE patient_id = ?", (id,))
+        .map_err(|e| format!("Erreur lors de la suppression du patient: {}", e))?;
+    tx.exec_drop("DELETE FROM patients WHERE id = ?", (id,))
+        .map_err(|e| format!("Erreur lors de la suppression du patient: {}", e))?;
+    tx.commit().map_err(|e| format!("Erreur lors de la suppression du patient: {}", e))
 }
 
 #[tauri::command]
@@ -434,6 +464,22 @@ async fn get_patient_appointments(patient_id: i64, db_url: String) -> Result<Vec
 }
 
 #[tauri::command]
+async fn update_appointment(id: i64, appointment: Appointment, db_url: String) -> Result<(), String> {
+    if appointment.treatment_type.trim().is_empty() {
+        return Err("Le type de soin est obligatoire".to_string());
+    }
+    let mut conn = get_connection_with_retry(&db_url, 3).await?;
+    conn.exec_drop(
+        "UPDATE appointments SET patient_id = ?, date = ?, time = ?, treatment_type = ?, notes = ?, status = ? WHERE id = ?",
+        (
+            appointment.patient_id, appointment.date, appointment.time, appointment.treatment_type,
+            ledger::blank_to_none(appointment.notes), appointment.status, id,
+        ),
+    )
+    .map_err(|e| format!("Erreur lors de la modification du rendez-vous: {}", e))
+}
+
+#[tauri::command]
 async fn update_appointment_status(id: i64, status: String, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_drop("UPDATE appointments SET status = ? WHERE id = ?", (status, id))
@@ -457,13 +503,14 @@ async fn add_payment(payment: Payment, db_url: String) -> Result<i64, String> {
     // Insert payment into MySQL
     let query = r"
         INSERT INTO payments 
-        (appointment_id, patient_id, amount, payment_method, collected_by, notes, payment_date, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        (appointment_id, treatment_id, patient_id, amount, payment_method, collected_by, notes, payment_date, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ";
     
     // Build parameter values
     let mut params: Vec<mysql::Value> = Vec::new();
     params.push(payment.appointment_id.into());
+    params.push(payment.treatment_id.into());
     params.push(payment.patient_id.into());
     params.push(payment.amount.into());
     params.push(payment.payment_method.into());
@@ -489,58 +536,30 @@ async fn add_payment(payment: Payment, db_url: String) -> Result<i64, String> {
 
 #[tauri::command]
 async fn get_payments_by_date(date: String, db_url: String) -> Result<Vec<Payment>, String> {
-    println!("[DEBUG] Fetching payments for date {} from MySQL", date);
-    
-    // Connect to MySQL with auto-retry
-    match get_connection_with_retry(&db_url, 3).await {
-        Ok(mut conn) => {
-            // Query payments from MySQL with patient and staff info
-            let query = r"
-                SELECT 
-                    p.id, 
-                    p.appointment_id, 
-                    p.patient_id, 
-                    p.amount, 
-                    p.payment_method, 
-                    p.collected_by, 
-                    p.notes, 
-                    p.payment_date, 
-                    p.created_at
-                FROM payments p 
-                WHERE p.payment_date = ?
-                ORDER BY p.created_at DESC
-            ";
-            
-            let payments_result: Result<Vec<Payment>, mysql::Error> = conn.exec_map(query, (date,), |mut row: mysql::Row| {
-                Payment {
-                    id: Some(row.take::<i64, _>("id").unwrap_or(0)),
-                    appointment_id: row.take::<Option<i64>, _>("appointment_id").unwrap_or(None),
-                    patient_id: row.take::<i64, _>("patient_id").unwrap_or(0),
-                    amount: row.take::<f64, _>("amount").unwrap_or(0.0),
-                    payment_method: row.take::<String, _>("payment_method").unwrap_or_default(),
-                    collected_by: row.take::<i64, _>("collected_by").unwrap_or(0),
-                    notes: row.take::<Option<String>, _>("notes").unwrap_or(None),
-                    payment_date: row.take::<String, _>("payment_date").unwrap_or_default(),
-                    created_at: row.take::<Option<String>, _>("created_at").unwrap_or(None),
-                }
-            });
-            
-            match payments_result {
-                Ok(payments) => {
-                    println!("[DEBUG] Found {} payments", payments.len());
-                    Ok(payments)
-                }
-                Err(e) => {
-                    println!("[DEBUG] Database query failed, returning empty list: {}", e);
-                    Ok(Vec::new())
-                }
-            }
-        }
-        Err(e) => {
-            println!("[DEBUG] Database connection failed, returning empty list: {}", e);
-            Ok(Vec::new())
-        }
-    }
+    let mut conn = get_connection_with_retry(&db_url, 3).await?;
+    conn.exec_map(
+        r"SELECT p.id, p.appointment_id, p.treatment_id, p.patient_id,
+                 CONCAT(pt.first_name, ' ', pt.last_name) AS patient_name, t.act AS treatment_act,
+                 p.amount, p.payment_method, p.collected_by, p.notes, p.payment_date, p.created_at
+          FROM payments p LEFT JOIN patients pt ON pt.id = p.patient_id
+               LEFT JOIN treatments t ON t.id = p.treatment_id
+          WHERE p.payment_date = ? ORDER BY p.id DESC",
+        (date,),
+        |mut row: mysql::Row| Payment {
+            id: Some(row.take::<i64, _>("id").unwrap_or(0)),
+            appointment_id: row.take::<Option<i64>, _>("appointment_id").unwrap_or(None),
+            treatment_id: row.take::<Option<i64>, _>("treatment_id").unwrap_or(None),
+            patient_id: row.take::<i64, _>("patient_id").unwrap_or(0),
+            patient_name: row.take::<Option<String>, _>("patient_name").unwrap_or(None),
+            treatment_act: row.take::<Option<String>, _>("treatment_act").unwrap_or(None),
+            amount: row.take::<f64, _>("amount").unwrap_or(0.0),
+            payment_method: row.take::<String, _>("payment_method").unwrap_or_default(),
+            collected_by: row.take::<i64, _>("collected_by").unwrap_or(0),
+            notes: row.take::<Option<String>, _>("notes").unwrap_or(None),
+            payment_date: row.take::<String, _>("payment_date").unwrap_or_default(),
+            created_at: row.take::<Option<String>, _>("created_at").unwrap_or(None),
+        },
+    ).map_err(|e| format!("Erreur lors de la lecture des paiements: {}", e))
 }
 
 fn staff_name(id: i64) -> String {
@@ -703,6 +722,7 @@ pub fn run() {
             add_appointment,
             get_appointments,
             get_patient_appointments,
+            update_appointment,
             update_appointment_status,
             delete_appointment,
             add_payment,
@@ -712,7 +732,16 @@ pub fn run() {
             get_daily_summary_by_staff,
             get_daily_summary_all_staff,
             verify_doctor_answer,
-            discover_server
+            discover_server,
+            ledger::add_treatment,
+            ledger::update_treatment,
+            ledger::delete_treatment,
+            ledger::get_patient_treatments,
+            ledger::add_treatment_payment,
+            ledger::get_treatment_payments,
+            ledger::delete_payment,
+            ledger::get_patient_balances,
+            ledger::get_next_billet_number
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -735,6 +764,8 @@ mod tests {
             first_name: format!("Test{}", tag),
             last_name: "Patient".into(),
             phone: "0600000000".into(),
+            billet_number: None,
+            insurance: None,
             email: None,
             date_of_birth: "1990-05-17".into(),
             gender: "F".into(),
@@ -747,6 +778,68 @@ mod tests {
             notes: None,
             created_at: None,
         }
+    }
+
+    // The frontend (src/services/api.ts) converts camelCase <-> snake_case and sends `null` for
+    // missing optionals. These checks pin the exact JSON shapes both ways, no database needed.
+    #[test]
+    fn frontend_payloads_match_backend_structs() {
+        use serde_json::json;
+        let patient: Patient = serde_json::from_value(json!({
+            "id": null, "billet_number": "1213", "first_name": "A", "last_name": "B", "phone": "0600000000",
+            "insurance": null, "date_of_birth": "", "gender": "female", "address": null, "email": null,
+            "allergies": null, "medical_history": null, "medications": null, "emergency_contact": null,
+            "emergency_phone": null, "notes": null
+        })).expect("patient payload");
+        assert_eq!(patient.billet_number.as_deref(), Some("1213"));
+
+        let t: ledger::Treatment = serde_json::from_value(json!({
+            "id": null, "patient_id": 7, "treatment_date": "2026-03-15", "tooth": "36", "act": "Composite",
+            "quote": 1500, "notes": null, "created_by": 2, "total_paid": 0
+        })).expect("treatment payload");
+        assert_eq!((t.patient_id, t.quote), (7, 1500.0));
+        // an edit sends the row back as it was read, including created_at
+        serde_json::from_value::<ledger::Treatment>(json!({
+            "id": 5, "patient_id": 7, "treatment_date": "2026-03-15", "tooth": "", "act": "x", "quote": 10.5,
+            "notes": "n", "created_by": 2, "total_paid": 4.25, "created_at": "2026-03-15 10:00:00"
+        })).expect("edited treatment payload");
+
+        let a: Appointment = serde_json::from_value(json!({
+            "id": null, "patient_id": 7, "patient_name": null, "patient_phone": null, "date": "2026-03-15",
+            "time": "09:30", "treatment_type": "Consultation", "notes": null, "status": "programmé"
+        })).expect("appointment payload");
+        assert_eq!(a.status, "programmé");
+    }
+
+    #[test]
+    fn backend_output_has_the_field_names_the_frontend_reads() {
+        let keys = |v: serde_json::Value| -> std::collections::BTreeSet<String> {
+            v.as_object().unwrap().keys().cloned().collect()
+        };
+        let want = |names: &[&str]| -> std::collections::BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+
+        let t = ledger::Treatment { id: Some(1), patient_id: 2, treatment_date: "2026-01-01".into(), tooth: "".into(),
+            act: "a".into(), quote: 1.0, notes: None, created_by: 1, total_paid: 0.0, created_at: None };
+        assert_eq!(keys(serde_json::to_value(t).unwrap()), want(&["id", "patient_id", "treatment_date", "tooth", "act",
+            "quote", "notes", "created_by", "total_paid", "created_at"]));
+
+        let b = ledger::PatientBalance { patient_id: 1, total_quote: 1.0, total_paid: 0.0 };
+        assert_eq!(keys(serde_json::to_value(b).unwrap()), want(&["patient_id", "total_quote", "total_paid"]));
+
+        let p = ledger::TreatmentPayment { id: 1, treatment_id: 1, amount: 1.0, payment_method: "espèces".into(),
+            payment_date: "2026-01-01".into(), collected_by: 1 };
+        assert_eq!(keys(serde_json::to_value(p).unwrap()), want(&["id", "treatment_id", "amount", "payment_method",
+            "payment_date", "collected_by"]));
+
+        let s = DailySummary::default();
+        assert_eq!(keys(serde_json::to_value(s).unwrap()), want(&["date", "staff_id", "staff_name", "total_cash",
+            "total_card", "total_check", "total_transfer", "total_collected", "number_of_payments"]));
+
+        let auth = AuthResult { user: User { id: Some(1), name: "n".into(), code: String::new(), role: "doctor".into(),
+            is_active: true, created_at: None }, db_url: "x".into() };
+        let v = serde_json::to_value(auth).unwrap();
+        assert!(v.get("db_url").is_some());
+        assert_eq!(keys(v["user"].clone()), want(&["id", "name", "code", "role", "is_active", "created_at"]));
     }
 
     #[test]
@@ -805,6 +898,14 @@ mod tests {
             notes: None, status: "programmé".into(), created_at: None,
         };
         let apt_id = add_appointment(apt, rec.db_url.clone()).await.unwrap();
+        // reschedule + edit from reception
+        let mut moved = get_patient_appointments(id, rec.db_url.clone()).await.unwrap().remove(0);
+        moved.date = "2030-01-16".into();
+        moved.time = "14:00".into();
+        moved.notes = Some("à rappeler".into());
+        update_appointment(apt_id, moved, rec.db_url.clone()).await.unwrap();
+        let after = get_patient_appointments(id, rec.db_url.clone()).await.unwrap().remove(0);
+        assert_eq!((after.date.as_str(), after.time.as_str(), after.notes.as_deref()), ("2030-01-16", "14:00", Some("à rappeler")));
         update_appointment_status(apt_id, "terminé".into(), doc.db_url.clone()).await.unwrap();
         let mine = get_patient_appointments(id, rec.db_url.clone()).await.unwrap();
         assert_eq!(mine.len(), 1);
@@ -833,7 +934,7 @@ mod tests {
         let pid = add_patient(patient("Pay"), rec.db_url.clone()).await.unwrap();
         let date = "2031-02-03".to_string();
         let pay = |amount: f64, method: &str, by: i64| Payment {
-            id: None, patient_id: pid, appointment_id: None, amount, payment_method: method.into(),
+            id: None, patient_id: pid, appointment_id: None, treatment_id: None, patient_name: None, treatment_act: None, amount, payment_method: method.into(),
             notes: None, collected_by: by, payment_date: "2031-02-03".into(), created_at: None,
         };
         add_payment(pay(200.0, "espèces", rec_u.id), rec.db_url.clone()).await.unwrap();
@@ -870,5 +971,161 @@ mod tests {
         assert!(found.starts_with("127.0.0."));
         // nothing listening on an unused private range => None
         assert_eq!(scan_subnet([10, 254, 253], 1).await, None);
+    }
+
+    fn treatment(pid: i64, by: i64, quote: f64) -> ledger::Treatment {
+        ledger::Treatment {
+            id: None, patient_id: pid, treatment_date: "2029-03-10".into(), tooth: "36".into(),
+            act: "Dévitalisation".into(), quote, notes: None, created_by: by, total_paid: 0.0, created_at: None,
+        }
+    }
+
+    async fn sessions() -> (AuthResult, AuthResult, i64, i64) {
+        load_config();
+        let cfg = config::get().unwrap();
+        let d = cfg.users.iter().find(|u| u.role == "doctor").unwrap();
+        let r = cfg.users.iter().find(|u| u.role == "reception").unwrap();
+        (
+            authenticate_user(d.code.clone(), None).await.unwrap(),
+            authenticate_user(r.code.clone(), None).await.unwrap(),
+            d.id, r.id,
+        )
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn billet_numbers_are_unique_and_auto_numbered() {
+        let (doc, rec, _, _) = sessions().await;
+        // (first ever patient: MAX() is NULL) -> "1" is only checked while the table is empty
+        let existing = get_patients(doc.db_url.clone()).await.unwrap();
+        if existing.iter().all(|p| p.billet_number.is_none()) {
+            assert_eq!(ledger::get_next_billet_number(rec.db_url.clone()).await.unwrap(), "1");
+        }
+        let next: i64 = ledger::get_next_billet_number(rec.db_url.clone()).await.unwrap().parse().unwrap();
+        let mut a = patient("BilletA");
+        a.billet_number = Some(format!("{}", next + 5000));
+        a.insurance = Some("CNSS".into());
+        let id_a = add_patient(a.clone(), rec.db_url.clone()).await.unwrap();
+        let got = get_patients(doc.db_url.clone()).await.unwrap().into_iter().find(|p| p.id == Some(id_a)).unwrap();
+        assert_eq!((got.billet_number.as_deref(), got.insurance.as_deref()), (a.billet_number.as_deref(), Some("CNSS")));
+        // the next suggested number follows the highest one
+        let after: i64 = ledger::get_next_billet_number(rec.db_url.clone()).await.unwrap().parse().unwrap();
+        assert_eq!(after, next + 5001);
+        // same billet twice => friendly error, in add and in update
+        let err = add_patient(a.clone(), rec.db_url.clone()).await.unwrap_err();
+        assert_eq!(err, "Ce numéro de billet existe déjà");
+        // blank billets never collide
+        let id_b = add_patient(patient("NoBilletB"), rec.db_url.clone()).await.unwrap();
+        let id_c = add_patient(patient("NoBilletC"), rec.db_url.clone()).await.unwrap();
+        let mut b = patient("NoBilletB");
+        b.billet_number = a.billet_number.clone();
+        assert_eq!(update_patient(id_b, b, rec.db_url.clone()).await.unwrap_err(), "Ce numéro de billet existe déjà");
+        for id in [id_a, id_b, id_c] {
+            delete_patient(id, doc.db_url.clone()).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn ledger_lines_payments_and_balances() {
+        let (doc, rec, doc_id, rec_id) = sessions().await;
+        let pid = add_patient(patient("Ledger"), rec.db_url.clone()).await.unwrap();
+
+        // line 1: quote 1000, 400 paid in cash at the visit (a paper row being re-entered)
+        let t1 = ledger::add_treatment(treatment(pid, rec_id, 1000.0), 400.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+        // line 2: quote 250, nothing paid yet
+        let mut second = treatment(pid, rec_id, 250.0);
+        second.treatment_date = "2029-04-02".into();
+        second.act = "Détartrage".into();
+        let t2 = ledger::add_treatment(second, 0.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+
+        let lines = ledger::get_patient_treatments(pid, doc.db_url.clone()).await.unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!((lines[0].id, lines[0].quote, lines[0].total_paid), (Some(t1), 1000.0, 400.0));
+        assert_eq!((lines[1].id, lines[1].total_paid), (Some(t2), 0.0));
+        let bal = ledger::get_patient_balances(doc.db_url.clone()).await.unwrap().into_iter().find(|b| b.patient_id == pid).unwrap();
+        assert_eq!((bal.total_quote, bal.total_paid), (1250.0, 400.0));
+
+        // paying the rest later; overpaying is refused
+        ledger::add_treatment_payment(t1, 300.0, "carte".into(), "2029-03-20".into(), rec_id, rec.db_url.clone()).await.unwrap();
+        let over = ledger::add_treatment_payment(t1, 400.0, "espèces".into(), "2029-03-21".into(), rec_id, rec.db_url.clone()).await.unwrap_err();
+        assert!(over.contains("dépasse"), "{}", over);
+        ledger::add_treatment_payment(t1, 300.0, "chèque".into(), "2029-03-22".into(), doc_id, doc.db_url.clone()).await.unwrap();
+        let pays = ledger::get_treatment_payments(t1, rec.db_url.clone()).await.unwrap();
+        assert_eq!(pays.iter().map(|p| p.amount).sum::<f64>(), 1000.0);
+        assert_eq!(pays.len(), 3);
+
+        // historic payments land on their own day in the daily caisse
+        let day = get_daily_summary_by_staff("2029-03-20".into(), rec_id, rec.db_url.clone()).await.unwrap();
+        assert_eq!((day.total_card, day.total_collected), (300.0, 300.0));
+        let listed = get_payments_by_date("2029-03-20".into(), doc.db_url.clone()).await.unwrap();
+        assert_eq!(listed[0].patient_name.as_deref(), Some("TestLedger Patient"));
+        assert_eq!(listed[0].treatment_id, Some(t1));
+        assert_eq!(listed[0].treatment_act.as_deref(), Some("Dévitalisation"));
+
+        // quote can't drop below what was already paid, but can go up
+        let mut edit = lines[0].clone();
+        edit.quote = 900.0;
+        assert!(ledger::update_treatment(edit.clone(), rec.db_url.clone()).await.unwrap_err().contains("inférieur"));
+        edit.quote = 1200.0;
+        edit.act = "Dévitalisation + couronne".into();
+        ledger::update_treatment(edit, rec.db_url.clone()).await.unwrap();
+        assert_eq!(ledger::get_patient_treatments(pid, rec.db_url.clone()).await.unwrap()[0].quote, 1200.0);
+
+        // a patient with a ledger can't be deleted at all
+        assert!(delete_patient(pid, doc.db_url.clone()).await.unwrap_err().contains("suppression impossible"));
+
+        // corrections are doctor-only (reception MySQL account has no DELETE on these tables)
+        assert!(ledger::delete_payment(pays[0].id, rec.db_url.clone()).await.is_err());
+        assert!(ledger::delete_treatment(t1, rec.db_url.clone()).await.is_err());
+        ledger::delete_payment(pays[0].id, doc.db_url.clone()).await.unwrap();
+        assert_eq!(ledger::get_treatment_payments(t1, doc.db_url.clone()).await.unwrap().len(), 2);
+        ledger::delete_treatment(t1, doc.db_url.clone()).await.unwrap();
+        ledger::delete_treatment(t2, doc.db_url.clone()).await.unwrap();
+        assert!(ledger::get_treatment_payments(t1, doc.db_url.clone()).await.unwrap().is_empty());
+        delete_patient(pid, doc.db_url.clone()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn ledger_input_validation() {
+        let (doc, rec, _, rec_id) = sessions().await;
+        let pid = add_patient(patient("Valid"), rec.db_url.clone()).await.unwrap();
+        let add = |t: ledger::Treatment, paid: f64, m: &str| {
+            let url = rec.db_url.clone();
+            let m = m.to_string();
+            async move { ledger::add_treatment(t, paid, m, url).await }
+        };
+        let mut no_act = treatment(pid, rec_id, 100.0);
+        no_act.act = "  ".into();
+        assert!(add(no_act, 0.0, "espèces").await.is_err());
+        let mut bad_date = treatment(pid, rec_id, 100.0);
+        bad_date.treatment_date = "10/03/2029".into();
+        assert!(add(bad_date, 0.0, "espèces").await.is_err());
+        assert!(add(treatment(pid, rec_id, -5.0), 0.0, "espèces").await.is_err());
+        assert!(add(treatment(pid, rec_id, 100.0), 150.0, "espèces").await.unwrap_err().contains("dépasse"));
+        assert!(add(treatment(pid, rec_id, 100.0), 50.0, "bitcoin").await.is_err());
+        assert!(add(treatment(pid, rec_id, 100.0), f64::NAN, "espèces").await.is_err());
+        // nothing was written by any of the rejected calls
+        assert!(ledger::get_patient_treatments(pid, doc.db_url.clone()).await.unwrap().is_empty());
+        delete_patient(pid, doc.db_url.clone()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn two_laptops_paying_the_same_line_cannot_overpay() {
+        let (doc, rec, _, rec_id) = sessions().await;
+        let pid = add_patient(patient("Race"), rec.db_url.clone()).await.unwrap();
+        let t = ledger::add_treatment(treatment(pid, rec_id, 500.0), 100.0, "espèces".into(), rec.db_url.clone()).await.unwrap();
+        // 400 left; two simultaneous payments of 300 -> exactly one may succeed
+        let (a, b) = tokio::join!(
+            ledger::add_treatment_payment(t, 300.0, "espèces".into(), "2029-05-01".into(), rec_id, rec.db_url.clone()),
+            ledger::add_treatment_payment(t, 300.0, "carte".into(), "2029-05-01".into(), rec_id, doc.db_url.clone()),
+        );
+        assert_eq!(a.is_ok() as u8 + b.is_ok() as u8, 1, "a={:?} b={:?}", a, b);
+        let paid = ledger::get_patient_treatments(pid, rec.db_url.clone()).await.unwrap()[0].total_paid;
+        assert_eq!(paid, 400.0);
+        ledger::delete_treatment(t, doc.db_url.clone()).await.unwrap();
+        delete_patient(pid, doc.db_url.clone()).await.unwrap();
     }
 }

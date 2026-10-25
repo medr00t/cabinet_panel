@@ -16,6 +16,9 @@ Au premier démarrage, la base `cabinet`, les tables et les deux comptes sont cr
 automatiquement (le compte réception ne peut supprimer que des rendez-vous : la base refuse le reste).
 Le conteneur redémarre tout seul avec Docker. Les données sont dans le volume Docker `cabinet-data`.
 
+Base déjà installée avant le carnet de soins (actes / paiements / n° billet) : exécuter une fois
+`database/migrations_001_ledger.sql` (voir README). Une installation neuve n'en a pas besoin.
+
 Sauvegarde : `docker exec cabinet-mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" cabinet' > sauvegarde.sql`
 
 Donner une IP fixe au poste serveur (réservation DHCP sur le routeur). Autoriser le port 3306

@@ -1,0 +1,60 @@
+@import "@fontsource-variable/inter";
+
+:root {
+  --font: "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* brand: the navy / sky blue of the clinic logo */
+  --brand-50: #ebf3fc;
+  --brand-100: #d6e6f8;
+  --brand-200: #b3d1f1;
+  --brand-400: #5a9bd8;
+  --brand-500: #2f78c4;
+  --brand-600: #1f63ab;
+  --brand-700: #184f8a;
+  --navy-800: #12335b;
+  --navy-900: #0d2745;
+  --navy-950: #091c33;
+
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #64748b;
+
+  --ok-bg: #e6f5ec;   --ok: #166534;   --ok-line: #bfe3cb;
+  --warn-bg: #fef3c7; --warn: #92400e; --warn-line: #f6dc8b;
+  --bad-bg: #fdecec;  --bad: #b42318;  --bad-line: #f5c2bd;
+
+  --radius: 10px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+h1, h2, h3, h4, p { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+::selection { background: var(--brand-100); }
+:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-3); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* thin scrollbars, WebView2 / WebKitGTK both honour these */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }

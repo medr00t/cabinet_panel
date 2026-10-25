@@ -1,212 +1,82 @@
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { Payment, Appointment, getAppointments } from '../services/database';
-import './PaymentForm.css';
+import { useState } from 'react';
+import Modal from './ui/Modal';
+import Field from './ui/Field';
+import MoneyInput from './ui/MoneyInput';
+import { METHODS } from '../constants';
+import { PaymentMethod, Treatment, errorMessage, payTreatment } from '../services/api';
+import { amount, money, parseAmount, today } from '../utils/format';
 
 interface PaymentFormProps {
+  treatment: Treatment;
   onClose: () => void;
-  onSubmit: (payment: Omit<Payment, 'id' | 'createdAt'>) => void;
-  selectedDate: string;
+  onSaved: () => void;
 }
 
-const PaymentForm: React.FC<PaymentFormProps> = ({ onClose, onSubmit, selectedDate }) => {
-  const [formData, setFormData] = useState({
-    appointmentId: '',
-    patientId: 0,
-    patientName: '',
-    amount: '',
-    paymentMethod: 'espèces' as 'espèces' | 'carte' | 'chèque' | 'virement',
-    notes: ''
-  });
+const PaymentForm = ({ treatment, onClose, onSaved }: PaymentFormProps) => {
+  const reste = Math.round((treatment.quote - treatment.totalPaid) * 100) / 100;
+  const [value, setValue] = useState(amount(reste).replace(/ /g, ''));
+  const [method, setMethod] = useState<PaymentMethod>('espèces');
+  const [date, setDate] = useState(today());
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{[key: string]: string}>({});
+  const n = parseAmount(value);
+  const after = reste - (Number.isNaN(n) ? 0 : n);
 
-  useEffect(() => {
-    loadAppointments();
-  }, []);
-
-  useEffect(() => {
-    // Filter appointments for selected date with 'terminé' status
-    const filtered = appointments.filter(apt => 
-      apt.date === selectedDate && apt.status === 'terminé'
-    );
-    setFilteredAppointments(filtered);
-  }, [appointments, selectedDate]);
-
-  const loadAppointments = async () => {
+  const submit = async () => {
+    if (Number.isNaN(n) || n <= 0) return setError('Saisissez un montant supérieur à zéro');
+    if (n > reste + 0.005) return setError(`Le montant dépasse le reste à payer (${money(reste)})`);
+    if (!date) return setError('Date obligatoire');
+    setBusy(true);
     try {
-      const appointmentsData = await getAppointments();
-      setAppointments(appointmentsData as Appointment[]);
-    } catch (error) {
-      console.error('Failed to load appointments:', error);
-    }
-  };
-
-  const handleAppointmentChange = (appointmentId: string) => {
-    const appointment = appointments.find(apt => apt.id?.toString() === appointmentId);
-    if (appointment) {
-      setFormData({
-        ...formData,
-        appointmentId,
-        patientId: appointment.patientId,
-        patientName: appointment.patientName || ''
-      });
-    }
-  };
-
-  const validateForm = () => {
-    const newErrors: {[key: string]: string} = {};
-
-    if (!formData.appointmentId) {
-      newErrors.appointmentId = 'Veuillez sélectionner un rendez-vous';
-    }
-
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      newErrors.amount = 'Veuillez entrer un montant valide';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const paymentData: Omit<Payment, 'id' | 'createdAt'> = {
-        appointmentId: parseInt(formData.appointmentId),
-        patientId: formData.patientId,
-        patientName: formData.patientName,
-        amount: parseFloat(formData.amount),
-        paymentMethod: formData.paymentMethod,
-        collectedBy: 0, // Will be set by parent component
-        collectedByName: '',
-        notes: formData.notes || undefined,
-        paymentDate: selectedDate
-      };
-
-      await onSubmit(paymentData);
-    } catch (error) {
-      console.error('Failed to add payment:', error);
-    } finally {
-      setLoading(false);
+      await payTreatment(treatment.id!, n, method, date);
+      onSaved();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
     }
   };
 
   return (
-    <div className="payment-form-overlay">
-      <div className="payment-form-modal">
-        <div className="modal-header">
-          <h3>Ajouter un Paiement</h3>
-          <button onClick={onClose} className="close-btn">
-            <X className="w-5 h-5" />
-          </button>
+    <Modal
+      title="Encaisser un paiement"
+      subtitle={`${treatment.act}${treatment.tooth ? ` · dent ${treatment.tooth}` : ''}`}
+      size="narrow" onClose={onClose} onSubmit={submit}
+      footer={<>
+        <button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button>
+        <button type="submit" className="btn btn-ok" disabled={busy}>Encaisser</button>
+      </>}
+    >
+      <div className="stack">
+        <div className="grid-3" style={{ gap: 10 }}>
+          {[['Devis', money(treatment.quote)], ['Payé', money(treatment.totalPaid)], ['Reste', money(reste)]].map(([k, v]) => (
+            <div key={k} style={{ padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8 }}>
+              <div className="muted" style={{ fontSize: 11.5, fontWeight: 600 }}>{k}</div>
+              <div className="num" style={{ fontWeight: 700, fontSize: 13.5, marginTop: 2 }}>{v}</div>
+            </div>
+          ))}
         </div>
-
-        <form onSubmit={handleSubmit} className="payment-form">
-          <div className="form-group">
-            <label htmlFor="appointment">
-              Rendez-vous <span className="required">*</span>
-            </label>
-            <select
-              id="appointment"
-              value={formData.appointmentId}
-              onChange={(e) => handleAppointmentChange(e.target.value)}
-              className={errors.appointmentId ? 'error' : ''}
-              required
-            >
-              <option value="">Sélectionner un rendez-vous</option>
-              {filteredAppointments.map((appointment) => (
-                <option key={appointment.id} value={appointment.id}>
-                  {appointment.time} - {appointment.patientName} ({appointment.treatmentType})
-                </option>
-              ))}
+        <Field label="Montant versé" htmlFor="p-amount" required>
+          <MoneyInput id="p-amount" value={value} onChange={(v) => { setValue(v); setError(''); }} invalid={!!error} />
+        </Field>
+        <div className="grid-2">
+          <Field label="Mode de paiement" htmlFor="p-method">
+            <select id="p-method" className="select" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
+              {METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
-            {errors.appointmentId && (
-              <span className="error-text">{errors.appointmentId}</span>
-            )}
+          </Field>
+          <Field label="Date" htmlFor="p-date">
+            <input id="p-date" className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+        </div>
+        {error && <div className="alert alert-bad" role="alert">{error}</div>}
+        {!error && !Number.isNaN(n) && n > 0 && (
+          <div className="muted" style={{ fontSize: 13 }}>
+            Après ce paiement : {after > 0.005 ? <b className="money-due">{money(after)} restant</b> : <b className="money-ok">acte soldé</b>}
           </div>
-
-          <div className="form-group">
-            <label htmlFor="amount">
-              Montant (MAD) <span className="required">*</span>
-            </label>
-            <input
-              type="number"
-              id="amount"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              placeholder="0.00"
-              step="0.01"
-              min="0"
-              className={errors.amount ? 'error' : ''}
-              required
-            />
-            {errors.amount && (
-              <span className="error-text">{errors.amount}</span>
-            )}
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="paymentMethod">
-              Méthode de Paiement <span className="required">*</span>
-            </label>
-            <select
-              id="paymentMethod"
-              value={formData.paymentMethod}
-              onChange={(e) => setFormData({ 
-                ...formData, 
-                paymentMethod: e.target.value as 'espèces' | 'carte' | 'chèque' | 'virement'
-              })}
-              required
-            >
-              <option value="espèces">Espèces</option>
-              <option value="carte">Carte Bancaire</option>
-              <option value="chèque">Chèque</option>
-              <option value="virement">Virement</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="notes">Notes (optionnel)</label>
-            <textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Notes additionnelles..."
-              rows={3}
-            />
-          </div>
-
-          <div className="form-actions">
-            <button
-              type="button"
-              onClick={onClose}
-              className="cancel-btn"
-              disabled={loading}
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              className="submit-btn"
-              disabled={loading}
-            >
-              {loading ? 'Ajout...' : 'Ajouter le Paiement'}
-            </button>
-          </div>
-        </form>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 };
 
