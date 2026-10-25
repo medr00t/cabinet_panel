@@ -13,7 +13,7 @@ Ouvrez le fichier `src-tauri/src/lib.rs` et modifiez les constantes aux lignes 1
 ```rust
 const SERVER_IP: &str = "localhost";     // Votre IP MySQL
 const LOGIN_USER: &str = "root";         // Votre utilisateur MySQL  
-const LOGIN_PASS: &str = "medr00t";      // Votre mot de passe MySQL
+const LOGIN_PASS: &str = "<MOT_DE_PASSE>";      // Votre mot de passe MySQL
 const DB_NAME: &str = "cabinet";         // Nom de votre base de données
 ```
 

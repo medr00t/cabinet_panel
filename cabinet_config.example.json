@@ -1,0 +1,9 @@
+{
+  "users": [
+    { "id": 1, "name": "Dr. El Ansari", "code": "0000", "role": "doctor",
+      "mysql_user": "guestx", "mysql_password": "CHANGE_ME" },
+    { "id": 2, "name": "Réception Principale", "code": "0000", "role": "reception",
+      "mysql_user": "reception", "mysql_password": "CHANGE_ME" }
+  ],
+  "doctor_security_answer": "CHANGE_ME"
+}

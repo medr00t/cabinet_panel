@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search, Plus, Edit, Trash2, User, Users, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
 import { Patient, addPatient, updatePatient, deletePatient } from '../services/database';
+import { useUser } from '../contexts/UserContext';
 import { formatDate } from '../utils/helpers';
 import PatientForm from './PatientForm.tsx';
 import PatientFinancialModal from './PatientFinancialModal';
@@ -11,6 +12,8 @@ interface PatientsProps {
 }
 
 const Patients = ({ patients, onReloadData }: PatientsProps) => {
+  const { user } = useUser();
+  const isDoctor = user?.role === 'doctor';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -170,15 +173,17 @@ const Patients = ({ patients, onReloadData }: PatientsProps) => {
                         >
                           <Edit className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (patient.id) handleDeletePatient(patient.id);
-                          }}
-                          className="p-1 text-gray-400 hover:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {isDoctor && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (patient.id) handleDeletePatient(patient.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

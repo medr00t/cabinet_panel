@@ -14,14 +14,14 @@ const DB_NAME: &str = "cabinet";
 
 // Dedicated Low-Privilege User (for initial authentication query ONLY)
 const LOGIN_USER: &str = "app_login";
-const LOGIN_PASS: &str = "medr00t"; // Replace with actual password
+const LOGIN_PASS: &str = "<MOT_DE_PASSE>"; // Replace with actual password
 
 // Mapping of User Roles to their Full MySQL Credentials (for dynamic connection)
 const USER_CREDENTIALS: [(&str, &str, &str); 3] = [
     // (Role in DB, MySQL Username, MySQL Password)
-    ("doctor", "guestx", "2016_2026guestx"),
-    ("reception", "reception", "reception@docali"),
-    ("staff", "assistant", "assistant@docali"), 
+    ("doctor", "guestx", "<MOT_DE_PASSE>"),
+    ("reception", "reception", "<MOT_DE_PASSE>"),
+    ("staff", "assistant", "<MOT_DE_PASSE>"), 
 ];
 
 fn get_login_url() -> String {

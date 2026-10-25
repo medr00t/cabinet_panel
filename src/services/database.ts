@@ -8,6 +8,25 @@ interface AuthResult {
 
 let currentAuth: AuthResult | null = null;
 
+const SERVER_HOST_KEY = 'serverHost';
+
+// Address of the machine running MySQL (the doctor's/server laptop on the LAN).
+export const getServerHost = (): string => {
+  try {
+    return localStorage.getItem(SERVER_HOST_KEY) || 'localhost';
+  } catch {
+    return 'localhost';
+  }
+};
+
+export const setServerHost = (host: string) => {
+  try {
+    localStorage.setItem(SERVER_HOST_KEY, host.trim() || 'localhost');
+  } catch {
+    // storage unavailable: the host just won't be remembered
+  }
+};
+
 export const getCurrentAuth = () => currentAuth;
 export const clearAuth = () => { currentAuth = null; };
 
@@ -46,7 +65,7 @@ export interface User {
   id?: number;
   name: string;
   code: string;
-  role: string; // 'doctor', 'reception', 'staff'
+  role: string; // 'doctor' | 'reception'
   isActive: boolean;
   createdAt?: string;
 }
@@ -280,7 +299,7 @@ export const authenticateUser = async (code: string): Promise<User> => {
     const performAuth = async () => {
       try {
         console.log('[DEBUG] Database service: Calling backend authenticate_user...');
-        const authResult = await invoke<AuthResult>('authenticate_user', { code });
+        const authResult = await invoke<AuthResult>('authenticate_user', { code, host: getServerHost() });
         console.log('[DEBUG] Database service: Backend authentication result:', authResult);
         
         // Skip connection test for now since backend authentication is already working
@@ -315,17 +334,15 @@ export const authenticateUser = async (code: string): Promise<User> => {
   return authWithTimeout;
 };
 
-export const getUsers = async (): Promise<User[]> => {
-  const users = await invoke<any[]>('get_users');
-  return users.map(user => ({
-    id: user.id,
-    name: user.name,
-    code: user.code,
-    role: user.role,
-    isActive: user.is_active,
-    createdAt: user.created_at,
-  }));
+// Looks for the MySQL server on this machine / the local network (no manual IP needed).
+export const discoverServer = async (): Promise<string | null> => {
+  const found = await invoke<string | null>('discover_server', { savedHost: getServerHost() });
+  if (found) setServerHost(found);
+  return found;
 };
+
+export const verifyDoctorAnswer = (answer: string): Promise<boolean> =>
+  invoke<boolean>('verify_doctor_answer', { answer });
 
 // Test database connection
 export const testDatabaseConnection = async (): Promise<string> => {
@@ -339,7 +356,7 @@ export const testDatabaseConnection = async (): Promise<string> => {
 // Auto-reconnect function
 export const reconnectDatabase = async (code: string): Promise<User> => {
   try {
-    const authResult = await invoke<AuthResult>('reconnect_database', { code });
+    const authResult = await invoke<AuthResult>('reconnect_database', { code, host: getServerHost() });
     
     // Update stored authentication
     currentAuth = authResult;

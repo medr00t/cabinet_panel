@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, authenticateUser } from '../services/database';
+import { User, authenticateUser, discoverServer, getServerHost, setServerHost, verifyDoctorAnswer } from '../services/database';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -8,6 +8,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   console.log('[DEBUG] Login component mounted, onLogin callback:', typeof onLogin);
   const [code, setCode] = useState('');
+  const [serverHost, setServerHostInput] = useState(getServerHost());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('');
@@ -25,6 +26,27 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setShowDoctorVerification(false);
     setPendingUser(null);
     setIsLoading(false);
+  }, []);
+
+  // Find the server automatically; the manual field stays as a fallback.
+  const [searching, setSearching] = useState(false);
+  const findServer = async () => {
+    setSearching(true);
+    try {
+      const found = await discoverServer();
+      if (found) {
+        setServerHostInput(found);
+        return found;
+      }
+    } catch (err) {
+      console.error('[ERROR] Server discovery failed:', err);
+    } finally {
+      setSearching(false);
+    }
+    return null;
+  };
+  useEffect(() => {
+    findServer();
   }, []);
 
   // Focus the hidden input for keyboard capture
@@ -77,7 +99,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     try {
       console.log('[DEBUG] Calling authenticateUser with code:', code);
-      const user = await authenticateUser(code);
+      setServerHost(serverHost);
+      let user: User;
+      try {
+        user = await authenticateUser(code);
+      } catch (firstError) {
+        // Server may have moved to another IP: search again once before giving up.
+        const message = firstError instanceof Error ? firstError.message : String(firstError);
+        if (!message.includes('base de données')) throw firstError;
+        setConnectionStatus('Recherche du serveur sur le réseau...');
+        const found = await findServer();
+        if (!found || found === serverHost) throw firstError;
+        user = await authenticateUser(code);
+      }
       
       console.log('[DEBUG] Authentication successful, user object:', JSON.stringify(user, null, 2));
       setConnectionStatus('Connexion à la base de données réussie !');
@@ -122,7 +156,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
-  const handleDoctorVerification = (e: React.FormEvent) => {
+  const handleDoctorVerification = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!pendingUser) return;
@@ -130,16 +164,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    // Security questions/challenges for doctor verification
-    const correctAnswers = [
-      'chahelali@'
-    ];
-    
-    const answerLower = securityAnswer.toLowerCase().trim();
-    
-    if (correctAnswers.includes(answerLower)) {
-      // Correct answer - allow login immediately
-      console.log('[DEBUG] Doctor verification successful, calling onLogin with:', pendingUser);
+    let verified = false;
+    try {
+      verified = await verifyDoctorAnswer(securityAnswer);
+    } catch (err) {
+      console.error('[ERROR] Doctor verification failed:', err);
+    }
+
+    if (verified) {
       onLogin(pendingUser);
     } else {
       setError('Réponse de sécurité incorrecte');
@@ -213,6 +245,24 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <form onSubmit={handleLogin}>
+              <div style={{ marginBottom: '16px', textAlign: 'center' }}>
+                <label style={{ display: 'block', color: '#999999', fontSize: '12px', marginBottom: '4px' }}>
+                  {searching ? 'Recherche du serveur...' : 'Serveur (détecté automatiquement)'}
+                </label>
+                <input
+                  type="text"
+                  value={serverHost}
+                  onChange={(e) => setServerHostInput(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="192.168.1.10"
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{
+                    width: '100%', maxWidth: '240px', padding: '6px 10px', fontSize: '14px',
+                    textAlign: 'center', border: '1px solid #e2e8f0', borderRadius: '6px'
+                  }}
+                />
+              </div>
               {/* Hidden input for keyboard capture */}
               <input
                 ref={hiddenInputRef}

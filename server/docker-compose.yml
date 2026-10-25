@@ -1,0 +1,25 @@
+# Cabinet database server. Run on ONE machine: `docker compose up -d`
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: cabinet-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    env_file: .env
+    environment:
+      MYSQL_DATABASE: cabinet
+      TZ: Africa/Casablanca
+    command: --character-set-server=utf8mb4
+    volumes:
+      - cabinet-data:/var/lib/mysql
+      - ../database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./init/02-users.sh:/docker-entrypoint-initdb.d/02-users.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  cabinet-data:

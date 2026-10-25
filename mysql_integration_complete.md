@@ -11,9 +11,9 @@
 - **Server**: 192.168.1.50 (your laptop on WiFi)
 - **Database**: cabinet
 - **Dynamic Users**: 
-  - Doctor → guestx/2016_2026guestx
-  - Reception → reception/reception@docali  
-  - Staff → assistant/assistant@docali
+  - Doctor → guestx/<MOT_DE_PASSE>
+  - Reception → reception/<MOT_DE_PASSE>  
+  - Staff → assistant/<MOT_DE_PASSE>
 
 ### Updated Backend Functions
 All functions now use **dynamic MySQL connections**:
@@ -35,10 +35,10 @@ All functions now use **dynamic MySQL connections**:
 1. **Start your MySQL on 192.168.1.50**
 2. **Create the users in MySQL**:
    ```sql
-   CREATE USER 'app_login'@'%' IDENTIFIED BY 'medr00t';
-   CREATE USER 'guestx'@'%' IDENTIFIED BY '2016_2026guestx';  
-   CREATE USER 'reception'@'%' IDENTIFIED BY 'reception@docali';
-   CREATE USER 'assistant'@'%' IDENTIFIED BY 'assistant@docali';
+   CREATE USER 'app_login'@'%' IDENTIFIED BY '<MOT_DE_PASSE>';
+   CREATE USER 'guestx'@'%' IDENTIFIED BY '<MOT_DE_PASSE>';  
+   CREATE USER 'reception'@'%' IDENTIFIED BY '<MOT_DE_PASSE>';
+   CREATE USER 'assistant'@'%' IDENTIFIED BY '<MOT_DE_PASSE>';
    
    GRANT SELECT ON cabinet.users TO 'app_login'@'%';
    GRANT ALL PRIVILEGES ON cabinet.* TO 'guestx'@'%';

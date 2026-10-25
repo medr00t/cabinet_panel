@@ -12,8 +12,6 @@ const Header: React.FC = () => {
         return 'Docteur';
       case 'reception':
         return 'Réception';
-      case 'staff':
-        return 'Assistant(e)';
       default:
         return role;
     }
@@ -25,8 +23,6 @@ const Header: React.FC = () => {
         return '#e74c3c';
       case 'reception':
         return '#3498db';
-      case 'staff':
-        return '#27ae60';
       default:
         return '#95a5a6';
     }
