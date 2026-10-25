@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Banknote, ChevronLeft, ChevronRight, CreditCard, Landmark, ScrollText, Wallet } from 'lucide-react';
 import { addDays } from 'date-fns';
+import DateField from '../components/ui/DateField';
 import EmptyState from '../components/ui/EmptyState';
 import { METHODS } from '../constants';
 import { useData } from '../contexts/DataContext';
@@ -38,7 +39,7 @@ const Caisse = () => {
         {isDoctor && (
           <div className="actions"><div className="day-nav">
             <button className="btn btn-secondary btn-icon" onClick={() => shift(-1)} aria-label="Jour précédent"><ChevronLeft /></button>
-            <input className="input" type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} style={{ width: 160 }} aria-label="Date" />
+            <DateField value={date} onChange={(v) => v && setDate(v)} width={150} ariaLabel="Date" />
             <button className="btn btn-secondary btn-icon" onClick={() => shift(1)} aria-label="Jour suivant"><ChevronRight /></button>
             <button className="btn btn-secondary" onClick={() => setDate(today())} disabled={date === today()}>Aujourd'hui</button>
           </div></div>

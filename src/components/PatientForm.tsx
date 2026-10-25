@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Modal from './ui/Modal';
 import Field from './ui/Field';
+import DateField from './ui/DateField';
 import { today } from '../utils/format';
 import { INSURANCES } from '../constants';
 import { Patient, createPatient, errorMessage, nextBilletNumber, savePatient } from '../services/api';
@@ -107,7 +108,7 @@ const PatientForm = ({ patient, onClose, onSaved }: PatientFormProps) => {
         </div>
         <div className="grid-3">
           <Field label="Date de naissance" htmlFor="dob" error={errors.dateOfBirth}>
-            <input id="dob" className="input" type="date" value={f.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} aria-invalid={!!errors.dateOfBirth} />
+            <DateField id="dob" value={f.dateOfBirth} onChange={(v) => set('dateOfBirth', v)} invalid={!!errors.dateOfBirth} />
           </Field>
           <Field label="Sexe">
             <div className="segmented" role="group" aria-label="Sexe">

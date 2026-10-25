@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from './ui/Modal';
 import Field from './ui/Field';
+import DateField from './ui/DateField';
 import MoneyInput from './ui/MoneyInput';
 import { METHODS } from '../constants';
 import { PaymentMethod, Treatment, errorMessage, payTreatment } from '../services/api';
@@ -66,7 +67,7 @@ const PaymentForm = ({ treatment, onClose, onSaved }: PaymentFormProps) => {
             </select>
           </Field>
           <Field label="Date" htmlFor="p-date">
-            <input id="p-date" className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateField id="p-date" value={date} onChange={setDate} />
           </Field>
         </div>
         {error && <div className="alert alert-bad" role="alert">{error}</div>}

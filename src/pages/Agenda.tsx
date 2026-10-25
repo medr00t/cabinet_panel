@@ -5,6 +5,7 @@ import { Check, CheckCheck, ChevronLeft, ChevronRight, Pencil, Phone, Plus, Tras
 import Avatar from '../components/ui/Avatar';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
+import DateField from '../components/ui/DateField';
 import AppointmentForm from '../components/AppointmentForm';
 import { STATUS_BADGE, STATUS_LABEL } from '../constants';
 import { useData } from '../contexts/DataContext';
@@ -60,7 +61,7 @@ const Agenda = ({ initialDate }: { initialDate?: string }) => {
         <div className="actions">
           <div className="day-nav">
             <button className="btn btn-secondary btn-icon" onClick={() => move(-1)} aria-label="Jour précédent"><ChevronLeft /></button>
-            <input className="input" type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} style={{ width: 160 }} aria-label="Date" />
+            <DateField value={date} onChange={(v) => v && setDate(v)} width={150} ariaLabel="Date" />
             <button className="btn btn-secondary btn-icon" onClick={() => move(1)} aria-label="Jour suivant"><ChevronRight /></button>
             <button className="btn btn-secondary" onClick={() => setDate(today())} disabled={date === today()}>Aujourd'hui</button>
           </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from './ui/Modal';
 import Field from './ui/Field';
+import DateField from './ui/DateField';
 import MoneyInput from './ui/MoneyInput';
 import { ACTS, METHODS } from '../constants';
 import { Patient, PaymentMethod, Treatment, addTreatment, errorMessage, saveTreatment } from '../services/api';
@@ -76,7 +77,7 @@ const TreatmentForm = ({ patient, userId, treatment, onClose, onSaved }: Treatme
       <div className="stack">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="Date" htmlFor="t-date" required error={errors.date} hint={editing ? undefined : 'Changez-la pour saisir une ligne du carnet papier.'}>
-            <input id="t-date" className="input" type="date" value={date} onChange={(e) => { setDate(e.target.value); clear('date'); }} aria-invalid={!!errors.date} />
+            <DateField id="t-date" value={date} onChange={(v) => { setDate(v); clear('date'); }} invalid={!!errors.date} />
           </Field>
           <Field label="Désignation (dent)" htmlFor="t-tooth" hint="Ex. 36, 11-21, Haut">
             <input id="t-tooth" className="input" value={tooth} onChange={(e) => setTooth(e.target.value)} maxLength={50} />

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import Modal from './ui/Modal';
 import Field from './ui/Field';
+import DateField from './ui/DateField';
 import PatientPicker from './PatientPicker';
 import { ACTS, STATUS_LABEL, TIME_SLOTS } from '../constants';
 import { Appointment, AppointmentStatus, Patient, createAppointment, errorMessage, saveAppointment } from '../services/api';
@@ -63,7 +64,7 @@ const AppointmentForm = ({ patients, appointments, appointment, defaultPatientId
         </Field>
         <div className="grid-2">
           <Field label="Date" htmlFor="a-date" required>
-            <input id="a-date" className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateField id="a-date" value={date} onChange={setDate} />
           </Field>
           <Field label="Heure" htmlFor="a-time">
             <select id="a-time" className="select num" value={time} onChange={(e) => setTime(e.target.value)}>
