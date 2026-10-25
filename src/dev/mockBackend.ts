@@ -207,6 +207,20 @@ export async function mockInvoke(cmd: string, a: Obj): Promise<unknown> {
       if (!['cnss_inp', 'cnss_city', 'dentist_name'].includes(a.name)) fail('Paramètre inconnu');
       settings[a.name] = String(a.value).trim();
       return delay(null);
+    case 'open_pdf': {
+      (window as any).__lastPdf = a.data;
+      const bin = atob(a.data); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      window.open(URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), '_blank');
+      return delay(`/tmp/cabinet-impressions/${a.name}.pdf`);
+    }
+    case 'list_backups':
+      requireDoctor(url);
+      return delay({ dir: 'Documents/Sauvegardes Cabinet', files: [
+        { name: `cabinet_${format(new Date(), 'yyyy-MM')}.xlsx`, size: 41200, modified: format(new Date(), 'dd/MM/yyyy HH:mm') },
+        { name: 'cabinet_2026-09.xlsx', size: 38800, modified: '30/09/2026 17:40' } ] });
+    case 'restore_backup':
+      requireDoctor(url);
+      return Promise.reject('La base de données contient déjà des données : la restauration ne remplace jamais des données existantes.');
     case 'export_backup':
       requireDoctor(url);
       return delay({ path: `Documents/Sauvegardes Cabinet/cabinet_${format(new Date(), 'yyyy-MM')}.xlsx (aperçu navigateur)`, files: a.full ? 3 : 2, patients: patients.length,

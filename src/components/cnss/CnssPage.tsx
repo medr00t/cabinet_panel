@@ -97,7 +97,7 @@ const CnssPage = ({ page, data, background }: CnssPageProps) => (
               </g>
             );
           })}
-          {treatedTeeth(data.acts).map((t) => DIAGRAM[t] && <circle key={t} cx={DIAGRAM[t][0]} cy={DIAGRAM[t][1]} r={25} fill="none" stroke={INK} strokeWidth={4.5} />)}
+          {treatedTeeth(data.acts).map((t) => DIAGRAM[t] && <circle key={t} cx={DIAGRAM[t][0]} cy={DIAGRAM[t][1]} r={Number(t[0]) >= 5 ? 12 : 25} fill="none" stroke={INK} strokeWidth={Number(t[0]) >= 5 ? 3 : 4.5} />)}
         </>
       )}
     </g>

@@ -2,6 +2,7 @@ mod backup;
 mod cnss;
 mod config;
 mod ledger;
+mod printing;
 
 use serde::{Deserialize, Serialize};
 use mysql::*;
@@ -755,11 +756,14 @@ pub fn run() {
             ledger::get_tooth_marks,
             ledger::set_tooth_mark,
             backup::export_backup,
+            backup::list_backups,
+            backup::restore_backup,
             cnss::get_cnss_sheets,
             cnss::save_cnss_sheet,
             cnss::delete_cnss_sheet,
             cnss::get_settings,
-            cnss::set_setting
+            cnss::set_setting,
+            printing::open_pdf
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -950,7 +954,7 @@ mod tests {
         }
         let strings = read(&this_month, "xl/sharedStrings.xml");
         assert!(strings.contains("TestBackup") && strings.contains("Dévitalisation"), "patient/act missing");
-        assert!(!strings.contains("Détartrage ancien"), "an old act must not be in this month's file");
+        assert!(!workbook.contains("10-03"), "an act from March must not get a day sheet in October's file");
         assert!(!strings.contains(&config::get().unwrap().users[0].mysql_password), "passwords must never be exported");
 
         // the older month got its own workbook (it had data and no file yet)
@@ -1014,6 +1018,100 @@ mod tests {
         assert_eq!(settings.get("cnss_city").map(String::as_str), Some("Meknès"));
         assert!(cnss::set_setting("mysql_password".into(), "x".into(), doc.db_url.clone()).await.is_err());
         delete_patient(pid, doc.db_url.clone()).await.unwrap();
+    }
+
+    fn root_password() -> Option<String> {
+        let env = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../server/.env")).ok()?;
+        env.lines().find_map(|l| l.strip_prefix("MYSQL_ROOT_PASSWORD=")).map(|v| v.trim().to_string())
+    }
+
+    /// Every table of a database as text rows, in a stable order. `null` is what a NULL becomes.
+    fn snapshot(conn: &mut PooledConn, null: &str) -> Vec<(String, Vec<Vec<String>>)> {
+        [("patients", "id"), ("appointments", "id"), ("treatments", "id"), ("payments", "id"),
+         ("tooth_marks", "patient_id, tooth"), ("cnss_sheets", "id"), ("settings", "name")]
+            .iter().map(|(t, order)| {
+                let rows: Vec<Row> = conn.query(format!("SELECT * FROM {} ORDER BY {}", t, order)).unwrap();
+                let text = rows.into_iter().map(|r| r.unwrap().into_iter().map(|v| match v {
+                    Value::NULL => null.to_string(),
+                    Value::Bytes(b) => String::from_utf8_lossy(&b).to_string(),
+                    other => format!("{:?}", other),
+                }).collect()).collect();
+                (t.to_string(), text)
+            }).collect()
+    }
+
+    /// Fresh empty database the doctor account may use.
+    fn scratch_db(root: &Pool, name: &str) -> String {
+        let cfg = config::get().unwrap();
+        let doctor = cfg.users.iter().find(|u| u.role == "doctor").unwrap();
+        let mut c = root.get_conn().unwrap();
+        c.query_drop(format!("DROP DATABASE IF EXISTS {}", name)).unwrap();
+        c.query_drop(format!("CREATE DATABASE {} CHARACTER SET utf8mb4", name)).unwrap();
+        c.query_drop(format!("GRANT ALL PRIVILEGES ON {}.* TO '{}'@'%'", name, doctor.mysql_user)).unwrap();
+        format!("mysql://{}:{}@localhost/{}", doctor.mysql_user, doctor.mysql_password, name)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn backups_can_restore_a_lost_database() {
+        let Some(root_pw) = root_password() else { eprintln!("skipped: server/.env not found"); return };
+        load_config();
+        let root = Pool::new(format!("mysql://root:{}@localhost/", root_pw).as_str()).unwrap();
+        let (src, dst) = (scratch_db(&root, "cabinet_src_test"), scratch_db(&root, "cabinet_dst_test"));
+        let mut src_conn = Pool::new(src.as_str()).unwrap().get_conn().unwrap();
+        backup::ensure_schema(&mut src_conn).unwrap();
+
+        // a database full of awkward values: quotes, backslashes, line breaks, accents, emoji, NULL vs ''
+        let mut p = patient("Restore");
+        p.last_name = "O'Brien \\ \"Test\"".into();
+        p.address = Some("12 rue Ibn Khaldoun\nMeknès 😀 — (2e étage)".into());
+        p.billet_number = Some("4242".into());
+        p.date_of_birth = String::new();
+        let pid = add_patient(p, src.clone()).await.unwrap();
+        let act = ledger::add_treatment(ledger::Treatment {
+            id: None, patient_id: pid, treatment_date: "2026-10-05".into(), tooth: "36, 37".into(), act: "Couronne céramique".into(),
+            quote: 3499.5, notes: Some("teinte A2; \"digue\"".into()), created_by: 1, total_paid: 0.0, created_at: None,
+        }, 1000.25, "chèque".into(), src.clone()).await.unwrap();
+        ledger::add_treatment_payment(act, 500.0, "espèces".into(), "2026-10-06".into(), 2, src.clone()).await.unwrap();
+        ledger::set_tooth_mark(ledger::ToothMark { patient_id: pid, tooth: "36".into(), status: "couronne".into(), note: Some("it's \\ fine".into()), updated_by: 1, updated_at: None }, src.clone()).await.unwrap();
+        cnss::save_cnss_sheet(cnss::CnssSheet { id: None, patient_id: pid, label: "Feuille d'octobre".into(),
+            data: r#"{"insuredName":"BENALI \"Samira\"","note":"l'assuré\nligne 2","acts":[{"teeth":"36"}]}"#.into(), created_by: 1, created_at: None, updated_at: None }, src.clone()).await.unwrap();
+        cnss::set_setting("cnss_city".into(), "Meknès".into(), src.clone()).await.unwrap();
+        add_appointment(Appointment { id: None, patient_id: pid, patient_name: None, patient_phone: None, date: "2026-10-30".into(),
+            time: "09:30".into(), treatment_type: "Contrôle".into(), notes: None, status: "programmé".into(), created_at: None }, src.clone()).await.unwrap();
+
+        let dir = std::env::temp_dir().join(format!("cabinet-restore-test-{}", std::process::id()));
+        let staff: Vec<(i64, String)> = config::get().unwrap().users.iter().map(|u| (u.id, u.name.clone())).collect();
+        let result = backup::write_backup(&dir, &src, &staff, backup::BackupMode::Full).expect("backup");
+        let xlsx = std::path::PathBuf::from(&result.path);
+        assert!(xlsx.extension().unwrap() == "xlsx");
+
+        // the workbook rebuilds an empty database (a new server, or a lost one) with every value
+        let mut dst_conn = Pool::new(dst.as_str()).unwrap().get_conn().unwrap();
+        let counts = backup::restore_from_workbook(&mut dst_conn, &xlsx).expect("excel restore");
+        assert_eq!((counts.patients, counts.treatments, counts.payments, counts.tooth_marks, counts.cnss_sheets, counts.appointments), (1, 1, 2, 1, 1, 1));
+        // (an empty cell comes back as NULL or '' depending on the column, the app treats both the same)
+        assert_eq!(snapshot(&mut dst_conn, ""), snapshot(&mut src_conn, ""), "restore must keep every value");
+        // ... and it never overwrites existing data
+        let again = backup::restore_from_workbook(&mut dst_conn, &xlsx).unwrap_err();
+        assert!(again.contains("déjà des données"), "{}", again);
+
+        // files that are not our backups are refused before anything is written
+        let fake = dir.join("cabinet_fake.xlsx");
+        std::fs::write(&fake, b"not an excel file").unwrap();
+        let dst2 = scratch_db(&root, "cabinet_dst_test");
+        let mut conn2 = Pool::new(dst2.as_str()).unwrap().get_conn().unwrap();
+        assert!(backup::restore_from_workbook(&mut conn2, &fake).unwrap_err().contains("illisible"));
+        let mut report_only = rust_xlsxwriter::Workbook::new();
+        report_only.add_worksheet().set_name("Résumé").unwrap();
+        report_only.save(&fake).unwrap();
+        assert!(backup::restore_from_workbook(&mut conn2, &fake).unwrap_err().contains("pas une sauvegarde complète"));
+        let tables: Vec<String> = conn2.query("SHOW TABLES").unwrap();
+        assert!(tables.is_empty(), "a refused file must not create anything, found {:?}", tables);
+
+        root.get_conn().unwrap().query_drop("DROP DATABASE cabinet_src_test").unwrap();
+        root.get_conn().unwrap().query_drop("DROP DATABASE cabinet_dst_test").unwrap();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

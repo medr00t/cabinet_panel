@@ -160,6 +160,9 @@ async function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise
   }
 }
 
+/** Saves a PDF (base64) to a temp folder and opens it in the system's PDF viewer / browser. */
+export const openPdf = (name: string, data: string) => rawInvoke<string>('open_pdf', { name, data });
+
 // ------------------------------------------------------------------ patients
 
 export const listPatients = () => call<Patient[]>('get_patients');
@@ -207,6 +210,12 @@ export const setSetting = (name: 'cnss_inp' | 'cnss_city' | 'dentist_name', valu
 // ------------------------------------------------------------------ Excel backup (doctor only)
 
 export interface BackupResult { path: string; files: number; patients: number; newPatients: number; treatments: number; payments: number; appointments: number; toothMarks: number }
+export interface BackupFile { name: string; size: number; modified: string }
+export interface BackupList { dir: string; files: BackupFile[] }
+export interface RestoreResult { patients: number; appointments: number; treatments: number; payments: number; toothMarks: number; cnssSheets: number; settings: number }
+export const listBackups = () => call<BackupList>('list_backups');
+/** Rebuilds an EMPTY database from a backup workbook; refused when the database already holds data. */
+export const restoreBackup = (file: string) => call<RestoreResult>('restore_backup', { file });
 /** automatic (after login): this month and last month; full (button): every month that has data */
 export const exportBackup = (full = false) => call<BackupResult>('export_backup', { full });
 

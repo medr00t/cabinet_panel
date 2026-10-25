@@ -4,6 +4,21 @@ Chaque poste lance l'application et se connecte directement à **un seul serveur
 (en général le poste du docteur). Il n'y a pas de synchronisation entre postes : tous lisent
 et écrivent la même base `cabinet`.
 
+## Quel poste héberge la base ?
+
+Il n'y a rien à régler dans l'application : **le poste serveur est celui où l'on lance la base de données**
+(`docker compose up -d` dans `server/`, ou double-clic sur `server\DEMARRER-SERVEUR.bat` sous Windows).
+Les autres postes le trouvent tout seuls sur le réseau ; l'écran de connexion et le coin du menu indiquent
+l'adresse trouvée (« Connecté · 192.168.1.10 »).
+
+Pour choisir le bon poste :
+- celui qui est **allumé toute la journée** de travail (si ce poste est éteint, personne ne peut travailler) ;
+- de préférence un ordinateur fixe, branché au réseau par câble, avec une **IP fixe** (réservation sur le routeur) ;
+- un seul poste : jamais deux serveurs en même temps, sinon les données seraient séparées en deux.
+
+Pour changer de poste plus tard : arrêter la base sur l'ancien (`docker compose down`), installer et lancer `server/`
+sur le nouveau, puis restaurer les données depuis la dernière sauvegarde Excel (menu *Sauvegarde Excel* > *Restaurer*).
+
 ## 1. Sur le poste serveur (un seul poste)
 
 Prérequis : Docker (Docker Desktop sur Windows). Dans le dossier `server/` :
@@ -61,10 +76,22 @@ Chaque classeur contient :
 - **Nouveaux patients** : tous les patients enregistrés pendant le mois, sur une seule feuille ;
 - **une feuille par jour** (`25-10`, `26-10`…) : rendez-vous, actes, paiements (avec le total encaissé par mode)
   et nouveaux patients de la journée ;
-- **Tous les patients** et **Dents** : l'état complet, pour qu'un seul fichier suffise à tout retrouver.
+- **Tous les patients** et **Dents** : l'état complet, lisible ;
+- **data_patients, data_treatments, data_payments…** (feuilles grises, à la fin) : toutes les données brutes de la base.
+  Ne pas les modifier : elles servent à reconstruire la base.
 
 Le fichier du mois en cours est mis à jour à chaque connexion (la feuille du jour se complète, les jours
 précédents restent). À la fin du mois, un nouveau fichier commence et l'ancien est conservé tel quel.
-Le bouton **Sauvegarde Excel** du menu régénère tous les mois. Pour changer le dossier, ajouter
-`"backup_dir": "D:\\Sauvegardes"` dans `cabinet_config.json`. Si un fichier est ouvert dans Excel, une copie
-avec l'heure est créée. Les fichiers ne contiennent aucun mot de passe.
+Le bouton **Sauvegarde Excel** du menu (docteur) permet de sauvegarder tout de suite et de **restaurer**.
+Pour changer le dossier, ajouter `"backup_dir": "D:\\Sauvegardes"` dans `cabinet_config.json`.
+Si un fichier est ouvert dans Excel, une copie avec l'heure est créée. Les fichiers ne contiennent aucun mot de passe.
+Pensez à copier ce dossier régulièrement sur une clé USB ou un disque externe.
+
+### Si la base est perdue
+
+1. Sur le poste serveur : installer et lancer `server/` (base vide), comme à la première installation.
+2. Se connecter en **docteur**, menu **Sauvegarde Excel**, choisir le fichier le plus récent, **Restaurer**.
+   (Si les fichiers sont sur une clé USB, les copier d'abord dans `Documents\Sauvegardes Cabinet\`.)
+3. Les patients, actes, paiements, rendez-vous, dents et feuilles CNSS reviennent avec leurs numéros.
+
+La restauration ne remplace **jamais** des données existantes : elle refuse de s'exécuter si la base n'est pas vide.

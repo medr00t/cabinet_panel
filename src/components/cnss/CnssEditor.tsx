@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileCheck2, Plus, Printer, Trash2, X } from 'lucide-react';
+import { FileCheck2, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
 import CnssPage from './CnssPage';
 import Field from '../ui/Field';
 import DateField from '../ui/DateField';
 import { CnssAct, CnssData, SavedSheet, Settings, careOf, emptyAct, actFromTreatment, newSheet, totalOf } from '../../cnss/model';
 import { MAX_ACT_LINES } from '../../cnss/layout';
 import { useToast } from '../../contexts/ToastContext';
-import { Patient, Treatment, errorMessage, saveCnssSheet, setSetting } from '../../services/api';
+import { Patient, Treatment, errorMessage, openPdf, saveCnssSheet, setSetting } from '../../services/api';
+import { sheetsToPdf, toBase64 } from '../../cnss/pdf';
 import { fmtDate, fullName, money } from '../../utils/format';
 
 interface CnssEditorProps {
@@ -102,6 +103,22 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
     }
   };
 
+  // Preferred way to print: make a PDF, open it in the default viewer / browser, then Ctrl+P there.
+  const openAsPdf = async () => {
+    if (data.acts.length > MAX_ACT_LINES) toast.warning('Trop d\'actes', `Seuls les ${MAX_ACT_LINES} premiers tiennent sur la feuille.`);
+    setBusy(true);
+    try {
+      const svgs = Array.from(document.querySelectorAll<SVGSVGElement>('.print-root svg'));
+      const pdf = await sheetsToPdf(svgs);
+      await openPdf(`Feuille CNSS ${fullName(patient)}`, toBase64(pdf));
+      toast.success('PDF ouvert', 'Appuyez sur Ctrl+P dans la fenêtre du PDF pour imprimer.');
+    } catch (e) {
+      toast.error('Impossible d\'ouvrir le PDF', errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const print = () => {
     if (data.acts.length > MAX_ACT_LINES) toast.warning('Trop d\'actes', `Seuls les ${MAX_ACT_LINES} premiers tiennent sur la feuille.`);
     window.print();
@@ -117,7 +134,8 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
         </div>
         <div className="row">
           <label className="check"><input type="checkbox" checked={printBackground} onChange={(e) => setPrintBackground(e.target.checked)} />Imprimer avec le formulaire</label>
-          <button className="btn btn-secondary" onClick={print}><Printer /> Imprimer</button>
+          <button className="btn btn-secondary" onClick={print} title="Ouvre directement la fenêtre d'impression"><Printer /> Imprimer ici</button>
+          <button className="btn btn-secondary" onClick={openAsPdf} disabled={busy} title="Ouvre la feuille en PDF : Ctrl+P pour imprimer"><FileText /> Ouvrir en PDF</button>
           <button className="btn" onClick={save} disabled={busy}><FileCheck2 /> Enregistrer dans le dossier</button>
           <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Fermer"><X /></button>
         </div>

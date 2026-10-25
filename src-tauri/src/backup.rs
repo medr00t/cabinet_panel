@@ -1,4 +1,6 @@
-// Excel backup run on the doctor's machine after each login.
+// Excel backup run on the doctor's machine after each login. Every workbook is also a complete, restorable
+// copy of the database: the `data_*` sheets hold the raw tables with their ids, and `restore_backup` rebuilds an
+// empty database from them.
 //
 // One workbook per month (`cabinet_AAAA-MM.xlsx`):
 //   Résumé            totals of the month and one line per day
@@ -14,10 +16,101 @@ use std::path::{Path, PathBuf};
 use chrono::{Datelike, Local, NaiveDate};
 use mysql::prelude::*;
 use mysql::*;
+use calamine::{open_workbook_auto, Data, Reader};
 use rust_xlsxwriter::{Color, Format, FormatAlign, Workbook, Worksheet, XlsxError};
 use serde::Serialize;
 
 use crate::{config, teeth_label};
+
+// ---------------------------------------------------------------- raw tables
+
+#[derive(Clone, Copy, PartialEq)]
+enum Kind { Int, Dec, Text }
+use Kind::{Dec, Int, Text};
+
+struct Col { name: &'static str, kind: Kind, nullable: bool }
+const fn col(name: &'static str, kind: Kind, nullable: bool) -> Col { Col { name, kind, nullable } }
+struct TableSpec { name: &'static str, order: &'static str, required: bool, cols: &'static [Col] }
+
+/// Same columns as database/schema.sql, in the order the tables are restored.
+const TABLES: [TableSpec; 7] = [
+    TableSpec { name: "patients", order: "id", required: true, cols: &[
+        col("id", Int, false), col("first_name", Text, false), col("last_name", Text, false), col("phone", Text, false),
+        col("billet_number", Text, true), col("insurance", Text, true), col("email", Text, true), col("date_of_birth", Text, true),
+        col("gender", Text, true), col("address", Text, true), col("allergies", Text, true), col("medical_history", Text, true),
+        col("medications", Text, true), col("emergency_contact", Text, true), col("emergency_phone", Text, true),
+        col("notes", Text, true), col("created_at", Text, true)] },
+    TableSpec { name: "appointments", order: "id", required: true, cols: &[
+        col("id", Int, false), col("patient_id", Int, false), col("date", Text, false), col("time", Text, false),
+        col("treatment_type", Text, false), col("notes", Text, true), col("status", Text, false), col("created_at", Text, true)] },
+    TableSpec { name: "treatments", order: "id", required: true, cols: &[
+        col("id", Int, false), col("patient_id", Int, false), col("treatment_date", Text, false), col("tooth", Text, false),
+        col("act", Text, false), col("quote", Dec, false), col("notes", Text, true), col("created_by", Int, false), col("created_at", Text, true)] },
+    TableSpec { name: "payments", order: "id", required: true, cols: &[
+        col("id", Int, false), col("appointment_id", Int, true), col("treatment_id", Int, true), col("patient_id", Int, false),
+        col("amount", Dec, false), col("payment_method", Text, false), col("collected_by", Int, false), col("notes", Text, true),
+        col("payment_date", Text, false), col("created_at", Text, true)] },
+    TableSpec { name: "tooth_marks", order: "patient_id, tooth", required: false, cols: &[
+        col("patient_id", Int, false), col("tooth", Text, false), col("status", Text, false), col("note", Text, true),
+        col("updated_by", Int, false), col("updated_at", Text, true)] },
+    TableSpec { name: "cnss_sheets", order: "id", required: false, cols: &[
+        col("id", Int, false), col("patient_id", Int, false), col("label", Text, false), col("data", Text, false),
+        col("created_by", Int, false), col("created_at", Text, true), col("updated_at", Text, true)] },
+    TableSpec { name: "settings", order: "name", required: false, cols: &[
+        col("name", Text, false), col("value", Text, true), col("updated_at", Text, true)] },
+];
+
+type RawRows = Vec<Vec<Value>>;
+
+/// Excel cells hold at most 32 767 characters.
+const CELL_MAX: usize = 32_000;
+
+fn load_raw(conn: &mut PooledConn) -> Result<Vec<RawRows>, String> {
+    let mut all = Vec::new();
+    for t in TABLES.iter() {
+        let names: Vec<&str> = t.cols.iter().map(|c| c.name).collect();
+        let sql = format!("SELECT {} FROM {} ORDER BY {}", names.join(", "), t.name, t.order);
+        match conn.query::<Row, _>(sql) {
+            Ok(rows) => all.push(rows.into_iter().map(|r| r.unwrap()).collect()),
+            // tables added by later migrations may not exist yet on an old database
+            Err(_) if !t.required => all.push(Vec::new()),
+            Err(e) => return Err(format!("Lecture de la base de données: {}", e)),
+        }
+    }
+    Ok(all)
+}
+
+fn raw_sheet(wb: &mut Workbook, spec: &TableSpec, rows: &RawRows, st: &Styles) -> Result<(), String> {
+    let ws = wb.add_worksheet();
+    ws.set_name(format!("data_{}", spec.name)).map_err(xl)?;
+    ws.set_tab_color(Color::RGB(0x94A3B8));
+    for (c, col) in spec.cols.iter().enumerate() {
+        ws.write_string_with_format(0, c as u16, col.name, &st.head).map_err(xl)?;
+        ws.set_column_width(c as u16, 16.0).map_err(xl)?;
+    }
+    ws.set_freeze_panes(1, 0).map_err(xl)?;
+    for (r, row) in rows.iter().enumerate() {
+        for (c, (v, col)) in row.iter().zip(spec.cols.iter()).enumerate() {
+            let (r, c) = ((r + 1) as u32, c as u16);
+            match v {
+                Value::NULL => {}
+                Value::Int(i) => { ws.write_number(r, c, *i as f64).map_err(xl)?; }
+                Value::UInt(u) => { ws.write_number(r, c, *u as f64).map_err(xl)?; }
+                Value::Float(f) => { ws.write_number(r, c, *f as f64).map_err(xl)?; }
+                Value::Double(d) => { ws.write_number(r, c, *d).map_err(xl)?; }
+                Value::Bytes(b) => {
+                    let t = String::from_utf8_lossy(b);
+                    match (col.kind, t.trim().parse::<f64>()) {
+                        (Dec, Ok(n)) | (Int, Ok(n)) => { ws.write_number(r, c, n).map_err(xl)?; }
+                        _ => { ws.write_string(r, c, t.chars().take(CELL_MAX).collect::<String>()).map_err(xl)?; }
+                    }
+                }
+                other => { ws.write_string(r, c, format!("{:?}", other)).map_err(xl)?; }
+            }
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct BackupResult {
@@ -156,7 +249,7 @@ struct DayData {
 }
 
 /// Data shared by every monthly workbook: the complete lists.
-struct Global { patients: Vec<Vec<Cell>>, marks: Vec<Vec<Cell>> }
+struct Global { patients: Vec<Vec<Cell>>, marks: Vec<Vec<Cell>>, raw: Vec<RawRows> }
 
 const PATIENT_HEAD: [&str; 19] = ["N° billet", "Nom", "Prénom", "Sexe", "Date de naissance", "Téléphone", "Adresse", "Couverture médicale", "E-mail", "Allergies",
     "Médicaments", "R.C.", "Devis / plan", "Personne à prévenir", "Tél. urgence", "Créé le", "Total devis", "Total payé", "Reste à payer"];
@@ -188,6 +281,7 @@ fn load_global(conn: &mut PooledConn) -> Result<Global, String> {
          WHERE m.status <> '' OR m.note IS NOT NULL ORDER BY p.last_name, m.tooth",
     ).map_err(q)?;
     Ok(Global {
+        raw: load_raw(conn)?,
         patients: patients.into_iter().map(|mut r| patient_cells(&mut r)).collect(),
         marks: marks.into_iter().map(|mut r| {
             let status = teeth_label(&text(&mut r, 3));
@@ -278,6 +372,7 @@ fn write_month(conn: &mut PooledConn, dir: &Path, month: &str, today: NaiveDate,
         widths(ws, &[26.0, 14.0, 14.0, 14.0, 16.0, 16.0, 16.0])?;
         let mut p = Page { ws, row: 0, st };
         p.title(&format!("Centre Dentaire Riad El Ansari — {}", month_title(year, mon)))?;
+        p.ws.write_string(1, 0, "Sauvegarde complète : les feuilles data_* (en gris, à la fin) contiennent toutes les données et servent à restaurer la base. Ne pas les modifier.").map_err(xl)?;
         let total_collected: f64 = days.values().map(|d| d.collected).sum();
         let total_quote: f64 = days.values().map(|d| d.quote).sum();
         p.section("Le mois", 7)?;
@@ -339,6 +434,8 @@ fn write_month(conn: &mut PooledConn, dir: &Path, month: &str, today: NaiveDate,
     // --- complete lists: a single month's file is already a usable backup
     table_sheet(&mut wb, "Tous les patients", &PATIENT_HEAD, &PATIENT_W, &[16, 17, 18], &global.patients, st)?;
     table_sheet(&mut wb, "Dents", &["N° billet", "Patient", "Dent", "État", "Remarque", "Modifié le"], &[10.0, 26.0, 8.0, 14.0, 48.0, 19.0], &[], &global.marks, st)?;
+    // raw tables, identical to the database: this is what makes the file a restorable backup
+    for (spec, rows) in TABLES.iter().zip(global.raw.iter()) { raw_sheet(&mut wb, spec, rows, st)?; }
 
     std::fs::create_dir_all(dir).map_err(|e| format!("Dossier de sauvegarde ({}): {}", dir.display(), e))?;
     let target = dir.join(format!("cabinet_{}.xlsx", month));
@@ -400,19 +497,186 @@ pub fn backup_dir(documents: Option<PathBuf>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".")).join("Sauvegardes Cabinet")
 }
 
+fn require_doctor(db_url: &str) -> Result<&'static config::AppConfig, String> {
+    let cfg = config::get()?;
+    let doctor = cfg.users.iter().find(|u| u.role == "doctor").ok_or_else(|| "Aucun compte docteur".to_string())?;
+    if !db_url.starts_with(&format!("mysql://{}:", doctor.mysql_user)) {
+        return Err("Cette fonction est réservée au docteur".to_string());
+    }
+    Ok(cfg)
+}
+
 // Doctor only: called after a doctor logs in (automatic) and by the "Sauvegarde Excel" button (full).
 #[tauri::command]
 pub async fn export_backup(app: tauri::AppHandle, db_url: String, full: Option<bool>) -> Result<BackupResult, String> {
     use tauri::Manager;
-    let cfg = config::get()?;
-    let doctor = cfg.users.iter().find(|u| u.role == "doctor").ok_or_else(|| "Aucun compte docteur".to_string())?;
-    if !db_url.starts_with(&format!("mysql://{}:", doctor.mysql_user)) {
-        return Err("La sauvegarde Excel est réservée au docteur".to_string());
-    }
+    let cfg = require_doctor(&db_url)?;
     let dir = backup_dir(app.path().document_dir().ok());
     let staff: Vec<(i64, String)> = cfg.users.iter().map(|u| (u.id, u.name.clone())).collect();
     let mode = if full.unwrap_or(false) { BackupMode::Full } else { BackupMode::Auto };
     tokio::task::spawn_blocking(move || write_backup(&dir, &db_url, &staff, mode))
         .await
         .map_err(|e| format!("Sauvegarde interrompue: {}", e))?
+}
+
+// ---------------------------------------------------------------- restore
+
+#[derive(Debug, Serialize, Clone, Default, PartialEq)]
+pub struct RestoreResult {
+    pub patients: usize,
+    pub appointments: usize,
+    pub treatments: usize,
+    pub payments: usize,
+    pub tooth_marks: usize,
+    pub cnss_sheets: usize,
+    pub settings: usize,
+}
+
+const SCHEMA: &str = include_str!("../../database/schema.sql");
+
+/// The CREATE TABLE statements of database/schema.sql, each flattened onto one line.
+fn schema_statements() -> Vec<String> {
+    let no_comments: String = SCHEMA.lines().map(|l| l.split("--").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
+    no_comments.split(';').map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|s| {
+        let up = s.to_uppercase();
+        !s.is_empty() && !up.starts_with("CREATE DATABASE") && !up.starts_with("USE ")
+    }).collect()
+}
+
+/// Creates the tables if they are missing (a brand new server, or a database that was lost).
+pub fn ensure_schema(conn: &mut PooledConn) -> Result<(), String> {
+    for stmt in schema_statements() {
+        conn.query_drop(&stmt).map_err(|e| format!("Création des tables: {}", e))?;
+    }
+    Ok(())
+}
+
+fn require_empty(conn: &mut PooledConn) -> Result<(), String> {
+    let existing: Option<i64> = conn.query_first(
+        "SELECT (SELECT COUNT(*) FROM patients) + (SELECT COUNT(*) FROM appointments) + (SELECT COUNT(*) FROM treatments)
+              + (SELECT COUNT(*) FROM payments) + (SELECT COUNT(*) FROM tooth_marks) + (SELECT COUNT(*) FROM cnss_sheets)",
+    ).map_err(|e| format!("Lecture de la base de données: {}", e))?;
+    if existing.unwrap_or(0) > 0 {
+        return Err("La base de données contient déjà des données : la restauration ne remplace jamais des données existantes. Elle sert uniquement après une perte de la base ou sur un nouveau serveur vide.".to_string());
+    }
+    Ok(())
+}
+
+fn cell_text(d: &Data) -> Option<String> {
+    match d {
+        Data::Empty => None,
+        Data::String(s) => Some(s.clone()),
+        Data::Float(f) if f.fract() == 0.0 && f.abs() < 1e15 => Some(format!("{}", *f as i64)),
+        Data::Float(f) => Some(format!("{}", f)),
+        Data::Int(i) => Some(i.to_string()),
+        other => Some(other.to_string()),
+    }
+}
+
+/// Parses every `data_*` sheet before touching the database, so a bad file fails without side effects.
+fn read_workbook(path: &Path) -> Result<Vec<RawRows>, String> {
+    let mut book = open_workbook_auto(path).map_err(|e| format!("Fichier Excel illisible: {}", e))?;
+    let mut tables = Vec::new();
+    for spec in TABLES.iter() {
+        let sheet = format!("data_{}", spec.name);
+        let range = match book.worksheet_range(&sheet) {
+            Ok(r) => r,
+            Err(_) if !spec.required => { tables.push(Vec::new()); continue; }
+            Err(_) => return Err(format!("Ce fichier n'est pas une sauvegarde complète : la feuille « {} » est absente. Utilisez un fichier cabinet_AAAA-MM.xlsx récent.", sheet)),
+        };
+        let mut rows = range.rows();
+        let header: Vec<String> = rows.next().map(|r| r.iter().map(|c| c.to_string()).collect()).unwrap_or_default();
+        let at: Vec<Option<usize>> = spec.cols.iter().map(|c| header.iter().position(|h| h == c.name)).collect();
+        if let Some(missing) = spec.cols.iter().zip(&at).find(|(c, i)| !c.nullable && i.is_none()) {
+            return Err(format!("Feuille « {} » : colonne « {} » manquante", sheet, missing.0.name));
+        }
+        let mut out = Vec::new();
+        for (n, row) in rows.enumerate() {
+            if row.iter().all(|c| matches!(c, Data::Empty)) { continue; }
+            let mut vals = Vec::with_capacity(spec.cols.len());
+            for (ci, c) in spec.cols.iter().enumerate() {
+                let cell = at[ci].and_then(|i| row.get(i)).and_then(cell_text);
+                let here = || format!("feuille « {} », ligne {}, colonne « {} »", sheet, n + 2, c.name);
+                vals.push(match (cell, c.kind) {
+                    (None, _) if c.nullable => Value::NULL,
+                    (None, Text) => Value::Bytes(Vec::new()),
+                    (None, Int) => Value::Int(0),
+                    (None, Dec) => Value::Bytes(b"0.00".to_vec()),
+                    (Some(t), Int) => Value::Int(t.trim().parse::<i64>().or_else(|_| t.trim().parse::<f64>().map(|f| f as i64)).map_err(|_| format!("Nombre invalide ({})", here()))?),
+                    (Some(t), Dec) => Value::Bytes(format!("{:.2}", t.trim().replace(',', ".").parse::<f64>().map_err(|_| format!("Montant invalide ({})", here()))?).into_bytes()),
+                    (Some(t), Text) => Value::Bytes(t.into_bytes()),
+                });
+            }
+            out.push(vals);
+        }
+        tables.push(out);
+    }
+    Ok(tables)
+}
+
+/// Rebuilds the database from a backup workbook. Never overwrites: the database must be empty.
+pub fn restore_from_workbook(conn: &mut PooledConn, path: &Path) -> Result<RestoreResult, String> {
+    let tables = read_workbook(path)?;
+    ensure_schema(conn)?;
+    require_empty(conn)?;
+    let mut tx = conn.start_transaction(TxOpts::default()).map_err(|e| format!("Transaction: {}", e))?;
+    for (spec, rows) in TABLES.iter().zip(tables.iter()) {
+        if rows.is_empty() { continue; }
+        let names: Vec<&str> = spec.cols.iter().map(|c| c.name).collect();
+        let sql = format!("INSERT INTO {} ({}) VALUES ({})", spec.name, names.join(", "), vec!["?"; names.len()].join(", "));
+        tx.exec_batch(sql, rows.iter().map(|r| Params::Positional(r.clone())))
+            .map_err(|e| format!("Restauration de « {} » : {}", spec.name, e))?;
+    }
+    tx.commit().map_err(|e| format!("Validation: {}", e))?;
+    let n = |i: usize| tables[i].len();
+    Ok(RestoreResult { patients: n(0), appointments: n(1), treatments: n(2), payments: n(3), tooth_marks: n(4), cnss_sheets: n(5), settings: n(6) })
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BackupFile { pub name: String, pub size: u64, pub modified: String }
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BackupList { pub dir: String, pub files: Vec<BackupFile> }
+
+pub fn list_backup_files(dir: &Path) -> Vec<BackupFile> {
+    let mut files: Vec<BackupFile> = std::fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !(name.starts_with("cabinet_") && name.ends_with(".xlsx")) { return None; }
+        let meta = e.metadata().ok()?;
+        let modified = meta.modified().ok().map(|t| chrono::DateTime::<Local>::from(t).format("%d/%m/%Y %H:%M").to_string()).unwrap_or_default();
+        Some(BackupFile { name, size: meta.len(), modified })
+    }).collect();
+    files.sort_by(|a, b| b.name.cmp(&a.name));
+    files
+}
+
+/// A backup file name chosen in the app: a plain file name inside the backup folder, nothing else.
+fn backup_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
+    if file.contains('/') || file.contains('\\') || file.contains("..") || !file.starts_with("cabinet_") || !file.ends_with(".xlsx") {
+        return Err("Nom de fichier de sauvegarde invalide".to_string());
+    }
+    let path = dir.join(file);
+    if path.is_file() { Ok(path) } else { Err("Fichier de sauvegarde introuvable".to_string()) }
+}
+
+#[tauri::command]
+pub async fn list_backups(app: tauri::AppHandle, db_url: String) -> Result<BackupList, String> {
+    use tauri::Manager;
+    require_doctor(&db_url)?;
+    let dir = backup_dir(app.path().document_dir().ok());
+    Ok(BackupList { files: list_backup_files(&dir), dir: dir.display().to_string() })
+}
+
+#[tauri::command]
+pub async fn restore_backup(app: tauri::AppHandle, db_url: String, file: String) -> Result<RestoreResult, String> {
+    use tauri::Manager;
+    require_doctor(&db_url)?;
+    let path = backup_path(&backup_dir(app.path().document_dir().ok()), &file)?;
+    tokio::task::spawn_blocking(move || {
+        let pool = Pool::new(db_url.as_str()).map_err(|e| format!("Connexion à la base de données: {}", e))?;
+        let mut conn = pool.get_conn().map_err(|e| format!("Connexion à la base de données: {}", e))?;
+        restore_from_workbook(&mut conn, &path)
+    })
+    .await
+    .map_err(|e| format!("Restauration interrompue: {}", e))?
 }

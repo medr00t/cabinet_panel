@@ -80,5 +80,13 @@ export const DIAGRAM: Record<string, [number, number]> = (() => {
   const q4 = [[800, 2191], [753, 2174], [709, 2138], [676, 2094], [657, 2049], [634, 1993], [619, 1931], [605, 1856]];
   const out: Record<string, [number, number]> = {};
   [q1, q2, q3, q4].forEach((q, qi) => q.forEach((p, j) => { out[`${qi + 1}${j + 1}`] = p as [number, number]; }));
+  // baby teeth: the small digits of the inner arch (5x upper right, 6x upper left, 7x lower left, 8x lower right)
+  const baby: Record<string, [number, number][]> = {
+    '5': [[829, 1527], [814, 1532], [802, 1547], [793, 1568], [788, 1587]],
+    '6': [[851, 1527], [864, 1533], [874, 1551], [881, 1570], [891, 1591]],
+    '7': [[851, 2029], [864, 2027], [874, 2018], [886, 1998], [894, 1970]],
+    '8': [[828, 2030], [813, 2027], [802, 2018], [795, 1999], [784, 1970]],
+  };
+  for (const [q, list] of Object.entries(baby)) list.forEach((p, j) => { out[`${q}${j + 1}`] = p; });
   return out;
 })();

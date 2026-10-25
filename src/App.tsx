@@ -7,6 +7,7 @@ import { useUser } from './contexts/UserContext';
 import { useToast } from './contexts/ToastContext';
 import { errorMessage, exportBackup, getServerHost } from './services/api';
 import { today } from './utils/format';
+import BackupDialog from './components/BackupDialog';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
@@ -30,6 +31,7 @@ const Shell = () => {
   const { appointments, error } = useData();
   const toast = useToast();
   const [backingUp, setBackingUp] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
 
   // Excel backup on the doctor's machine: automatically after each login, and on demand.
   const backup = async (automatic: boolean) => {
@@ -88,13 +90,14 @@ const Shell = () => {
             </div>
           </div>
           {isDoctor && (
-            <button className="logout" onClick={() => backup(false)} disabled={backingUp} title="Enregistre toutes les données dans un fichier Excel (Documents/Sauvegardes Cabinet)">
+            <button className="logout" onClick={() => setBackupOpen(true)} disabled={backingUp} title="Sauvegardes Excel : sauvegarder maintenant ou restaurer">
               <FileSpreadsheet /> {backingUp ? 'Sauvegarde…' : 'Sauvegarde Excel'}
             </button>
           )}
           <button className="logout" onClick={signOut}><LogOut /> Se déconnecter</button>
         </div>
       </aside>
+      {backupOpen && <BackupDialog onClose={() => setBackupOpen(false)} />}
       <main className="main">
         {route.page === 'dashboard' && <Dashboard />}
         {route.page === 'patients' && <Patients />}
