@@ -212,6 +212,9 @@ fn wait_ready(l: &Layout, port: u16, password: Option<&str>, timeout: Duration) 
 
 /// Starts the managed server if it is installed and not already running. Returns true when it was started now.
 pub fn start_if_needed() -> Result<bool, String> {
+    // the app start and the login screen both call this: only one may launch the server
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !is_installed() { return Ok(false); }
     let state = read_state()?;
     if port_open(state.port) { return Ok(false); }

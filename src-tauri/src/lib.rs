@@ -30,6 +30,7 @@ fn resolve_host(host: Option<String>) -> Result<String, String> {
 }
 
 fn get_dynamic_url(username: &str, password: &str, host: &str) -> String {
+    let host = if host == "localhost" { "127.0.0.1" } else { host };
     format!("mysql://{}:{}@{}/{}", username, password, host, DB_NAME)
 }
 
@@ -647,7 +648,8 @@ pub fn teeth_label(status: &str) -> String {
 
 async fn mysql_port_open(host: String) -> Option<String> {
     use std::time::Duration;
-    let addr = format!("{}:3306", host);
+    // "localhost" may resolve to ::1 first, which Windows takes ~2 s to refuse: probe the IPv4 loopback directly
+    let addr = format!("{}:3306", if host == "localhost" { "127.0.0.1" } else { host.as_str() });
     match tokio::time::timeout(Duration::from_millis(400), tokio::net::TcpStream::connect(&addr)).await {
         Ok(Ok(_)) => Some(host),
         _ => None,
