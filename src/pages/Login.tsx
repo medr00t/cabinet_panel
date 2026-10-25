@@ -52,9 +52,10 @@ const Login = () => {
       else signIn(user);
     } catch (e) {
       const msg = errorMessage(e);
+      // only a rejected code is "Code incorrect"; anything else (e.g. missing config file) shows its real reason
       setError(/base de données|connexion/i.test(msg)
         ? 'Impossible de joindre le serveur. Vérifiez que le poste du docteur est allumé.'
-        : 'Code incorrect');
+        : /code invalide/i.test(msg) ? 'Code incorrect' : msg);
       setShake(true);
       window.setTimeout(() => { setShake(false); setCode(''); }, 380);
     } finally {
@@ -136,7 +137,7 @@ const Login = () => {
                 {[0, 1, 2, 3].map((i) => <i key={i} className={i < code.length ? 'on' : ''} />)}
               </div>
               <div style={{ minHeight: 22, textAlign: 'center', marginBottom: 14 }}>
-                {error ? <span className="error" style={{ color: 'var(--bad)', fontSize: 13, fontWeight: 500 }}>{error}</span>
+                {error ? <span className="error" style={{ color: 'var(--bad)', fontSize: 13, fontWeight: 500, display: 'block', wordBreak: 'break-word' }}>{error}</span>
                   : busy ? <span className="muted" style={{ fontSize: 13 }}>Connexion…</span> : null}
               </div>
               <div className="keypad">
