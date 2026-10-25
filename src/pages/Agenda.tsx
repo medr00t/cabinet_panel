@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { addDays, addWeeks, eachDayOfInterval, endOfWeek, format, startOfWeek, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Check, CheckCheck, ChevronLeft, ChevronRight, Pencil, Phone, Plus, Trash2, X, CalendarDays } from 'lucide-react';
+import RefreshButton from '../components/ui/RefreshButton';
 import Avatar from '../components/ui/Avatar';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
@@ -59,6 +60,7 @@ const Agenda = ({ initialDate }: { initialDate?: string }) => {
           <p className="sub">{cap(fmtDateLong(date))}</p>
         </div>
         <div className="actions">
+          <RefreshButton />
           <div className="day-nav">
             <button className="btn btn-secondary btn-icon" onClick={() => move(-1)} aria-label="Jour précédent"><ChevronLeft /></button>
             <DateField value={date} onChange={(v) => v && setDate(v)} width={150} ariaLabel="Date" />

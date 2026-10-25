@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ChevronUp, Search, UserPlus, Users } from 'lucide-react';
+import RefreshButton from '../components/ui/RefreshButton';
 import Avatar from '../components/ui/Avatar';
 import EmptyState from '../components/ui/EmptyState';
 import PatientForm from '../components/PatientForm';
@@ -56,7 +57,7 @@ const Patients = () => {
     <div className="page">
       <div className="page-head">
         <div><h1>Patients</h1><p className="sub">{patients.length} dossier{patients.length > 1 ? 's' : ''}</p></div>
-        <div className="actions"><button className="btn" onClick={() => setCreating(true)}><UserPlus /> Nouveau patient</button></div>
+        <div className="actions"><RefreshButton /><button className="btn" onClick={() => setCreating(true)}><UserPlus /> Nouveau patient</button></div>
       </div>
 
       <div className="card">

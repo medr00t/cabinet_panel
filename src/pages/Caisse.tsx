@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Banknote, ChevronLeft, ChevronRight, CreditCard, Landmark, ScrollText, Wallet } from 'lucide-react';
 import { addDays } from 'date-fns';
 import DateField from '../components/ui/DateField';
+import RefreshButton from '../components/ui/RefreshButton';
 import EmptyState from '../components/ui/EmptyState';
 import { METHODS } from '../constants';
 import { useData } from '../contexts/DataContext';
@@ -36,14 +37,15 @@ const Caisse = () => {
           <h1>Caisse</h1>
           <p className="sub">{cap(fmtDateLong(date))}{isDoctor ? '' : ' · vos encaissements'}</p>
         </div>
-        {isDoctor && (
-          <div className="actions"><div className="day-nav">
+        <div className="actions">
+          <RefreshButton />
+          {isDoctor && (<div className="day-nav">
             <button className="btn btn-secondary btn-icon" onClick={() => shift(-1)} aria-label="Jour précédent"><ChevronLeft /></button>
             <DateField value={date} onChange={(v) => v && setDate(v)} width={150} ariaLabel="Date" />
             <button className="btn btn-secondary btn-icon" onClick={() => shift(1)} aria-label="Jour suivant"><ChevronRight /></button>
             <button className="btn btn-secondary" onClick={() => setDate(today())} disabled={date === today()}>Aujourd'hui</button>
-          </div></div>
-        )}
+          </div>)}
+        </div>
       </div>
 
       {payments.error && <div className="alert alert-bad" style={{ marginBottom: 16 }}>{payments.error}</div>}

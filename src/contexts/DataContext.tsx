@@ -55,8 +55,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     refresh();
     const timer = window.setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
     const onFocus = () => refresh();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) { e.preventDefault(); refresh(); }
+    };
     window.addEventListener('focus', onFocus);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+    window.addEventListener('keydown', onKey);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('keydown', onKey); };
   }, [refresh]);
 
   const value = useMemo(

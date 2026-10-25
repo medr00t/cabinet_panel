@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { CalendarCheck, CalendarDays, Coins, Plus, ReceiptText, UserPlus, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import RefreshButton from '../components/ui/RefreshButton';
 import Avatar from '../components/ui/Avatar';
 import EmptyState from '../components/ui/EmptyState';
 import PatientForm from '../components/PatientForm';
@@ -46,6 +47,7 @@ const Dashboard = () => {
           <p className="sub">{cap(format(new Date(), 'EEEE d MMMM yyyy', { locale: fr }))}</p>
         </div>
         <div className="actions">
+          <RefreshButton />
           <button className="btn btn-secondary" onClick={() => setCreating('appointment')}><CalendarDays /> Nouveau rendez-vous</button>
           <button className="btn" onClick={() => setCreating('patient')}><UserPlus /> Nouveau patient</button>
         </div>

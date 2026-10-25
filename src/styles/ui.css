@@ -152,3 +152,5 @@
 .date-btn:hover:not(:disabled) { background: var(--line); color: var(--text); }
 .date-btn svg { width: 16px; height: 16px; }
 .date-native { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.btn.spin svg { animation: spin .7s linear infinite; }

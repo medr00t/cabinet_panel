@@ -1,8 +1,9 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, CalendarPlus, ChevronDown, ChevronRight, ClipboardList, CreditCard, FileText, MapPin, Pencil, Phone,
   Plus, ShieldPlus, Trash2, UserX, Wallet,
 } from 'lucide-react';
+import RefreshButton from '../components/ui/RefreshButton';
 import Avatar from '../components/ui/Avatar';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
@@ -40,6 +41,9 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
   const [history, setHistory] = useState<Record<number, TreatmentPayment[]>>({});
 
   const ledger = useLoader(() => patientTreatments(patientId), [patientId, version]);
+  // a refresh also re-reads the payment history of the rows that are expanded
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { open.forEach((id) => { loadHistory(id); }); }, [version]);
   const lines = ledger.data ?? [];
 
   const totals = useMemo(() => {
@@ -83,7 +87,10 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
 
   return (
     <div className="page">
-      <button className="crumb" onClick={() => go({ page: 'patients' })}><ArrowLeft /> Patients</button>
+      <div className="row-between" style={{ marginBottom: 14 }}>
+        <button className="crumb" style={{ margin: 0 }} onClick={() => go({ page: 'patients' })}><ArrowLeft /> Patients</button>
+        <RefreshButton />
+      </div>
 
       <section className="card" style={{ marginBottom: 20 }}>
         <div className="file-head">
