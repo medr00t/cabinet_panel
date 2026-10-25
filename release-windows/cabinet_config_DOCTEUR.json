@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Dr. El Ansari",
+      "code": "1234",
+      "role": "doctor",
+      "mysql_user": "guestx",
+      "mysql_password": "2016_2026guestx"
+    }
+  ],
+  "doctor_security_answer": "chahelali@"
+}

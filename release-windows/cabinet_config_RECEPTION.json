@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": 2,
+      "name": "Réception Principale",
+      "code": "5678",
+      "role": "reception",
+      "mysql_user": "reception",
+      "mysql_password": "reception@docali"
+    }
+  ],
+  "doctor_security_answer": "unused-on-reception"
+}
