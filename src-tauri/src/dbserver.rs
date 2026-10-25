@@ -185,7 +185,7 @@ fn spawn_server(l: &Layout) -> Result<(), String> {
     let mut cmd = Command::new(mysqld_in(&l.mysql));
     cmd.arg(format!("--defaults-file={}", l.ini.display())).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     #[cfg(windows)]
-    { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000 | 0x0000_0008); } // no window, detached
+    { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000 | 0x0000_0200); } // hidden console, own process group (survives the app)
     #[cfg(unix)]
     { use std::os::unix::process::CommandExt; cmd.process_group(0); }
     cmd.spawn().map(|_| ()).map_err(|e| format!("Démarrage de la base impossible: {}", e))

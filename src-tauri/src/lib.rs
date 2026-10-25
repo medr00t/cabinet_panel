@@ -676,7 +676,11 @@ async fn discover_server(saved_host: Option<String>) -> Result<Option<String>, S
 
     let mut candidates: Vec<String> = Vec::new();
     // a laptop that hosts the cabinet database always uses its own, whatever was remembered before
-    if dbserver::is_installed() { candidates.push("localhost".to_string()); }
+    if dbserver::is_installed() {
+        // the database may still be starting (just after Windows or the app started): wait for it
+        if let Ok(Err(e)) = tokio::task::spawn_blocking(dbserver::start_if_needed).await { return Err(e); }
+        candidates.push("localhost".to_string());
+    }
     if let Some(h) = saved_host.map(|h| h.trim().to_string()).filter(|h| !h.is_empty()) {
         candidates.push(h);
     }

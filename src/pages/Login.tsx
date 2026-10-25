@@ -28,7 +28,7 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
     try {
       const found = await discoverServer();
       if (found) { setHost(found); setServer('found'); return found; }
-    } catch { /* falls through to "missing" */ }
+    } catch (e) { setError(errorMessage(e)); }
     setServer('missing');
     return null;
   }, []);
