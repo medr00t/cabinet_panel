@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Delete, ShieldCheck } from 'lucide-react';
+import { Delete } from 'lucide-react';
 import Logo from '../components/ui/Logo';
 import {
-  User, discoverServer, errorMessage, getServerHost, login, logout, setServerHost, verifyDoctorAnswer,
+  User, discoverServer, errorMessage, getServerHost, login, setServerHost,
 } from '../services/api';
 import { useUser } from '../contexts/UserContext';
 
@@ -14,8 +14,6 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
-  const [pending, setPending] = useState<User | null>(null); // doctor waiting for the security answer
-  const [answer, setAnswer] = useState('');
   const [host, setHost] = useState(getServerHost());
   const [server, setServer] = useState<ServerState>('searching');
   const [editHost, setEditHost] = useState(false);
@@ -49,8 +47,7 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
         if (!found) throw first;
         user = await login(pin);
       }
-      if (user.role === 'doctor') { setPending(user); setPin(''); }
-      else signIn(user);
+      signIn(user);
     } catch (e) {
       const msg = errorMessage(e);
       // only a rejected code is "Code incorrect"; anything else (e.g. missing config file) shows its real reason
@@ -67,12 +64,12 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
   }, [findServer, setPin, signIn]);
 
   const press = useCallback((digit: string) => {
-    if (busy || pending) return;
+    if (busy) return;
     const next = (codeRef.current + digit).slice(0, 4);
     setPin(next);
     setError('');
     if (next.length === 4) { setServerHost(host); attempt(next); }
-  }, [attempt, busy, host, pending, setPin]);
+  }, [attempt, busy, host, setPin]);
 
   // keyboard entry (not while typing in the server field or the answer field)
   useEffect(() => {
@@ -84,22 +81,6 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [press, setPin]);
-
-  const verify = async () => {
-    if (!pending) return;
-    setBusy(true);
-    setError('');
-    try {
-      if (await verifyDoctorAnswer(answer)) signIn(pending);
-      else setError('Réponse incorrecte');
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const cancelDoctor = () => { logout(); setPending(null); setAnswer(''); setError(''); };
 
   return (
     <div className="login">
@@ -118,22 +99,7 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
 
       <div className="login-panel">
         <div className="login-box">
-          {pending ? (
-            <>
-              <h1>Vérification</h1>
-              <p className="sub">Bonjour {pending.name}. Répondez à la question de sécurité pour continuer.</p>
-              <form onSubmit={(e) => { e.preventDefault(); verify(); }} className="stack" style={{ gap: 14 }}>
-                <div className="field">
-                  <label htmlFor="answer">Réponse de sécurité</label>
-                  <input id="answer" className="input" type="password" autoFocus autoComplete="off" value={answer}
-                    onChange={(e) => { setAnswer(e.target.value); setError(''); }} aria-invalid={!!error} />
-                  {error && <span className="error">{error}</span>}
-                </div>
-                <button className="btn btn-block" type="submit" disabled={busy || !answer.trim()}><ShieldCheck /> Continuer</button>
-                <button type="button" className="btn btn-ghost btn-block" onClick={cancelDoctor}><ArrowLeft /> Retour</button>
-              </form>
-            </>
-          ) : (
+          {(
             <>
               <h1>Connexion</h1>
               <p className="sub">Saisissez votre code à 4 chiffres.</p>

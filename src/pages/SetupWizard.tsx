@@ -16,7 +16,6 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
   const [role, setRole] = useState<Role>('reception');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [answer, setAnswer] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
   const [error, setError] = useState('');
@@ -33,11 +32,10 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
     if (!/^\d{4}$/.test(code)) return 'Le code doit contenir exactement 4 chiffres.';
     if (pass.length < 8) return 'Le mot de passe du cabinet doit faire au moins 8 caractères.';
     if (host && pass !== pass2) return 'Les deux mots de passe ne sont pas identiques.';
-    if (role === 'doctor' && !answer.trim()) return 'Choisissez la réponse de sécurité du docteur.';
     return '';
   };
 
-  const save = () => setupSaveConfig({ role, passphrase: pass, code, name: name.trim() || undefined, answer: answer.trim() || undefined }, true);
+  const save = () => setupSaveConfig({ role, passphrase: pass, code, name: name.trim() || undefined }, true);
 
   const next = async () => {
     const problem = validate();
@@ -140,11 +138,6 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
                 <div className="field"><label htmlFor="sw-code">Code de connexion (4 chiffres)</label>
                   <input id="sw-code" className="input" inputMode="numeric" maxLength={4} autoComplete="off" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
                   <span className="hint">C'est le code tapé sur le clavier de l'écran de connexion.</span></div>
-                {doctorLabel && (
-                  <div className="field"><label htmlFor="sw-answer">Réponse de sécurité du docteur</label>
-                    <input id="sw-answer" className="input" type="password" autoComplete="off" value={answer} onChange={(e) => setAnswer(e.target.value)} />
-                    <span className="hint">Demandée après le code, avant d'ouvrir une session docteur.</span></div>
-                )}
                 <div className="field"><label htmlFor="sw-pass">Mot de passe du cabinet</label>
                   <input id="sw-pass" className="input" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
                   <span className="hint">{host ? 'Choisissez-le maintenant (8 caractères minimum) : le même sera demandé sur les autres postes.' : 'Le même que sur le poste qui garde la base de données.'}</span></div>

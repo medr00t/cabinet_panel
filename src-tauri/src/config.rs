@@ -18,6 +18,8 @@ pub struct UserEntry {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub users: Vec<UserEntry>,
+    /// no longer asked at login; kept so older config files still load
+    #[serde(default)]
     pub doctor_security_answer: String,
     /// where the daily Excel backups go (default: Documents/Sauvegardes Cabinet)
     #[serde(default, skip_serializing_if = "Option::is_none")]

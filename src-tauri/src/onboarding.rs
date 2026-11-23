@@ -63,9 +63,6 @@ fn check_input(i: &SetupInput) -> Result<(), String> {
     if i.role != "reception" && i.role != "doctor" { return Err("Rôle inconnu".to_string()); }
     if i.passphrase.chars().count() < 8 { return Err("Le mot de passe du cabinet doit faire au moins 8 caractères".to_string()); }
     if i.code.len() != 4 || !i.code.chars().all(|c| c.is_ascii_digit()) { return Err("Le code doit contenir 4 chiffres".to_string()); }
-    if i.role == "doctor" && i.answer.as_deref().map_or(true, |a| a.trim().is_empty()) {
-        return Err("La réponse de sécurité du docteur est obligatoire".to_string());
-    }
     Ok(())
 }
 
@@ -86,8 +83,7 @@ pub async fn setup_save_config(app: AppHandle, input: SetupInput, force: Option<
         mysql_user: if doctor { "guestx".to_string() } else { "reception".to_string() },
         mysql_password: derive(&input.passphrase, &input.role),
     };
-    let answer = if doctor { input.answer.clone().unwrap_or_default().trim().to_string() } else { "(non utilisé sur ce poste)".to_string() };
-    config::save(&dir, &config::AppConfig { users: vec![user], doctor_security_answer: answer, backup_dir: None })
+    config::save(&dir, &config::AppConfig { users: vec![user], doctor_security_answer: String::new(), backup_dir: None })
 }
 
 #[derive(Debug, Serialize)]

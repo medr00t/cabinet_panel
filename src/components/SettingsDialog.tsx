@@ -13,7 +13,6 @@ const SettingsDialog = ({ onClose }: { onClose: () => void }) => {
   const reception = useLoader(() => getReceptionCode(), []);
   const [current, setCurrent] = useState('');
   const [newCode, setNewCode] = useState('');
-  const [answer, setAnswer] = useState('');
   const [recCode, setRecCode] = useState('');
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState<'me' | 'rec' | null>(null);
@@ -21,9 +20,9 @@ const SettingsDialog = ({ onClose }: { onClose: () => void }) => {
   const saveMine = async () => {
     setBusy('me');
     try {
-      await changeDoctorLogin(current, newCode, answer);
+      await changeDoctorLogin(current, newCode);
       toast.success('Modifié', 'Utilisez le nouveau code à la prochaine connexion.');
-      setCurrent(''); setNewCode(''); setAnswer('');
+      setCurrent(''); setNewCode('');
     } catch (e) {
       toast.error('Modification impossible', errorMessage(e));
     } finally { setBusy(null); }
@@ -41,7 +40,7 @@ const SettingsDialog = ({ onClose }: { onClose: () => void }) => {
     } finally { setBusy(null); }
   };
 
-  const mineReady = /^\d{4}$/.test(current) && (/^\d{4}$/.test(newCode) || answer.trim() !== '') && (newCode === '' || /^\d{4}$/.test(newCode));
+  const mineReady = /^\d{4}$/.test(current) && /^\d{4}$/.test(newCode);
 
   return (
     <Modal title="Paramètres" subtitle="Codes de connexion" onClose={onClose} footer={<button className="btn btn-secondary" onClick={onClose}>Fermer</button>}>
@@ -51,9 +50,7 @@ const SettingsDialog = ({ onClose }: { onClose: () => void }) => {
           <div className="field"><label htmlFor="st-cur">Code actuel</label>
             <input id="st-cur" className="input" inputMode="numeric" type="password" autoComplete="off" value={current} onChange={(e) => setCurrent(digits(e.target.value))} /></div>
           <div className="field"><label htmlFor="st-new">Nouveau code (4 chiffres)</label>
-            <input id="st-new" className="input" inputMode="numeric" autoComplete="off" value={newCode} onChange={(e) => setNewCode(digits(e.target.value))} placeholder="laisser vide pour ne pas changer" /></div>
-          <div className="field"><label htmlFor="st-ans">Nouvelle réponse de sécurité</label>
-            <input id="st-ans" className="input" type="password" autoComplete="off" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="laisser vide pour ne pas changer" /></div>
+            <input id="st-new" className="input" inputMode="numeric" autoComplete="off" value={newCode} onChange={(e) => setNewCode(digits(e.target.value))} /></div>
           <div><button className="btn" onClick={saveMine} disabled={!mineReady || busy !== null}><KeyRound /> Enregistrer mon code</button></div>
           <span className="hint muted" style={{ fontSize: 12 }}>Ce changement s'applique à cet ordinateur.</span>
         </section>
