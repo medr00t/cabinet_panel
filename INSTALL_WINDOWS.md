@@ -29,3 +29,28 @@ Windows 10 ancien : installez « Microsoft Edge WebView2 Runtime » (Evergreen S
 ## 5. Si la base de données ne démarre pas
 
 Les fichiers sont dans `%LOCALAPPDATA%\CentreDentaire\database` (journal : `mysqld.log`). Si MySQL se plaint d'une DLL manquante, installez « Microsoft Visual C++ Redistributable 2015-2022 (x64) ».
+
+## 6. « Un autre programme utilise déjà le port 3306 »
+
+Un autre MySQL (ancien service, XAMPP, WAMP, ou un `mysqld.exe` resté d'un essai précédent) occupe déjà le port. Dans **PowerShell** (clic droit sur Démarrer), copiez cette ligne pour voir lequel :
+
+```
+Get-Process -Id (Get-NetTCPConnection -LocalPort 3306 -State Listen).OwningProcess | Select Name, Id, Path
+```
+
+- Si le chemin contient `CentreDentaire\database` : c'est resté d'un essai précédent. Fermez-le, puis rouvrez l'application :
+
+  ```
+  Stop-Process -Name mysqld -Force
+  ```
+
+- Si c'est un service MySQL dont vous n'avez pas besoin (PowerShell en administrateur) :
+
+  ```
+  Stop-Service MySQL80
+  Set-Service MySQL80 -StartupType Disabled
+  ```
+
+  (remplacez `MySQL80` par le nom affiché dans `services.msc`)
+
+- Si ce MySQL contient des données à garder, ne l'arrêtez pas : il faut utiliser un autre port pour l'application.
