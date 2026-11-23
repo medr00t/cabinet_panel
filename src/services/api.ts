@@ -242,6 +242,15 @@ export const restoreBackup = (file: string) => call<RestoreResult>('restore_back
 /** automatic (after login): this month and last month; full (button): every month that has data */
 export const exportBackup = (full = false) => call<BackupResult>('export_backup', { full });
 
+// ------------------------------------------------------------------ doctor's settings
+
+/** The reception login code as stored in the database (null until reception has logged in once or the doctor sets one). */
+export const getReceptionCode = () => call<string | null>('get_reception_code');
+export const setReceptionCode = (code: string) => call<void>('set_reception_code', { code });
+/** Changes the doctor's own code and/or security answer on this laptop; the current code is asked again. */
+export const changeDoctorLogin = (currentCode: string, newCode?: string, newAnswer?: string) =>
+  call<void>('change_doctor_login', { currentCode, newCode: newCode || null, newAnswer: newAnswer || null });
+
 // ------------------------------------------------------------------ caisse
 
 export const paymentsByDate = (date: string) => call<Payment[]>('get_payments_by_date', { date });

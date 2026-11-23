@@ -1,3 +1,4 @@
+mod access;
 mod backup;
 mod cnss;
 mod config;
@@ -171,9 +172,29 @@ async fn authenticate_user(code: String, host: Option<String>) -> Result<AuthRes
     let host = resolve_host(host)?;
     let config = config::get()?;
 
-    let entry = config.users.iter()
-        .find(|u| u.code == code)
-        .ok_or_else(|| "Code invalide ou utilisateur inactif".to_string())?;
+    // The doctor's code is local. The reception code can be changed by the doctor, so it lives in the database:
+    // a reception laptop accepts the code stored there (and, until one is set, its own local code).
+    let local = config.users.iter().find(|u| u.code == code);
+    let entry = match local {
+        Some(e) => e,
+        None => config.users.iter().find(|u| u.role == "reception")
+            .ok_or_else(|| "Code invalide ou utilisateur inactif".to_string())?,
+    };
+    if entry.role == "reception" {
+        let url = get_dynamic_url(&entry.mysql_user, &entry.mysql_password, &host);
+        let shared = tokio::task::spawn_blocking(move || access::read_reception_code(&url)).await.map_err(|e| e.to_string())??;
+        match shared {
+            Some(c) if c != code => return Err("Code invalide ou utilisateur inactif".to_string()),
+            Some(_) => {}
+            None if local.is_none() => return Err("Code invalide ou utilisateur inactif".to_string()),
+            None => {
+                // first reception login: publish its code so the doctor can see and change it
+                let url = get_dynamic_url(&entry.mysql_user, &entry.mysql_password, &host);
+                let c = code.clone();
+                let _ = tokio::task::spawn_blocking(move || access::write_reception_code(&url, &c)).await;
+            }
+        }
+    }
 
     let user = User {
         id: Some(entry.id),
@@ -780,6 +801,9 @@ pub fn run() {
             cnss::get_settings,
             cnss::set_setting,
             printing::open_pdf,
+            access::get_reception_code,
+            access::set_reception_code,
+            access::change_doctor_login,
             onboarding::setup_status,
             onboarding::setup_save_config,
             onboarding::server_install,
@@ -1163,6 +1187,36 @@ mod tests {
         assert!(authenticate_user(doc.code.clone(), Some("127.0.0.1:1".into())).await.is_err());
         assert!(verify_doctor_answer(cfg.doctor_security_answer.to_uppercase()).unwrap());
         assert!(!verify_doctor_answer("nope".into()).unwrap());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn doctor_manages_the_reception_code() {
+        load_config();
+        let cfg = config::get().unwrap();
+        let doc_entry = cfg.users.iter().find(|u| u.role == "doctor").unwrap();
+        let rec_entry = cfg.users.iter().find(|u| u.role == "reception").unwrap();
+        let doc = authenticate_user(doc_entry.code.clone(), None).await.unwrap();
+        let rec = authenticate_user(rec_entry.code.clone(), None).await.unwrap();
+
+        // only the doctor sees / sets it
+        assert!(access::get_reception_code(rec.db_url.clone()).await.is_err());
+        assert!(access::set_reception_code("7777".into(), rec.db_url.clone()).await.is_err());
+        assert!(access::set_reception_code("12".into(), doc.db_url.clone()).await.is_err());
+        assert!(access::set_reception_code("77a7".into(), doc.db_url.clone()).await.is_err());
+        assert_eq!(access::get_reception_code(doc.db_url.clone()).await.unwrap(), Some(rec_entry.code.clone()));
+
+        // new code works, the old one stops working, then everything is put back
+        access::set_reception_code("7777".into(), doc.db_url.clone()).await.unwrap();
+        assert_eq!(authenticate_user("7777".into(), None).await.unwrap().user.role, "reception");
+        assert!(authenticate_user(rec_entry.code.clone(), None).await.is_err());
+        access::set_reception_code(rec_entry.code.clone(), doc.db_url.clone()).await.unwrap();
+        assert!(authenticate_user(rec_entry.code.clone(), None).await.is_ok());
+
+        // the doctor's own change asks for the current code, and is doctor-only
+        assert!(access::change_doctor_login("0000".into(), Some("4321".into()), None, doc.db_url.clone()).await.is_err());
+        assert!(access::change_doctor_login(doc_entry.code.clone(), Some("4321".into()), None, rec.db_url.clone()).await.is_err());
+        assert!(access::change_doctor_login(doc_entry.code.clone(), None, None, doc.db_url.clone()).await.is_err());
     }
 
     #[tokio::test]

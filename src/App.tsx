@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarDays, FileSpreadsheet, LayoutDashboard, LogOut, Users, Wallet } from 'lucide-react';
+import { CalendarDays, FileSpreadsheet, KeyRound, LayoutDashboard, LogOut, Users, Wallet } from 'lucide-react';
 import Logo from './components/ui/Logo';
 import { DataProvider, useData } from './contexts/DataContext';
 import { NavProvider, Route, useNav } from './contexts/NavContext';
@@ -8,6 +8,7 @@ import { useToast } from './contexts/ToastContext';
 import { errorMessage, exportBackup, getServerHost } from './services/api';
 import { today } from './utils/format';
 import BackupDialog from './components/BackupDialog';
+import SettingsDialog from './components/SettingsDialog';
 import Login from './pages/Login';
 import SetupWizard from './pages/SetupWizard';
 import { setupStatus } from './services/api';
@@ -34,6 +35,7 @@ const Shell = () => {
   const toast = useToast();
   const [backingUp, setBackingUp] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Excel backup on the doctor's machine: automatically after each login, and on demand.
   const backup = async (automatic: boolean) => {
@@ -96,10 +98,14 @@ const Shell = () => {
               <FileSpreadsheet /> {backingUp ? 'Sauvegarde…' : 'Sauvegarde Excel'}
             </button>
           )}
+          {isDoctor && (
+            <button className="logout" onClick={() => setSettingsOpen(true)}><KeyRound /> Codes de connexion</button>
+          )}
           <button className="logout" onClick={signOut}><LogOut /> Se déconnecter</button>
         </div>
       </aside>
       {backupOpen && <BackupDialog onClose={() => setBackupOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <main className="main">
         {route.page === 'dashboard' && <Dashboard />}
         {route.page === 'patients' && <Patients />}

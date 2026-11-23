@@ -25,6 +25,7 @@ pub struct AppConfig {
 }
 
 // Replaceable at runtime: the first-run wizard writes the file while the app is already running.
+static CONFIG_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
 static CONFIG: RwLock<Option<Result<Arc<AppConfig>, String>>> = RwLock::new(None);
 
 pub fn config_path(config_dir: &Path) -> PathBuf {
@@ -36,6 +37,7 @@ pub fn exists(config_dir: &Path) -> bool {
 }
 
 pub fn load(config_dir: PathBuf) {
+    *CONFIG_DIR.write().unwrap() = Some(config_dir.clone());
     let path = config_path(&config_dir);
     let result = std::fs::read_to_string(&path)
         .map_err(|e| format!("Fichier de configuration introuvable ({}): {}", path.display(), e))
@@ -63,4 +65,10 @@ pub fn get() -> Result<Arc<AppConfig>, String> {
         Some(Err(e)) => Err(e.clone()),
         None => Err("Configuration non chargée".to_string()),
     }
+}
+
+/// Saves a modified copy of the active configuration (used by the doctor's settings page).
+pub fn save_active(config: &AppConfig) -> Result<(), String> {
+    let dir = CONFIG_DIR.read().unwrap().clone().ok_or_else(|| "Configuration non chargée".to_string())?;
+    save(&dir, config)
 }

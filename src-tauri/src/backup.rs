@@ -497,7 +497,7 @@ pub fn backup_dir(documents: Option<PathBuf>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".")).join("Sauvegardes Cabinet")
 }
 
-fn require_doctor(db_url: &str) -> Result<std::sync::Arc<config::AppConfig>, String> {
+pub fn require_doctor(db_url: &str) -> Result<std::sync::Arc<config::AppConfig>, String> {
     let cfg = config::get()?;
     let doctor = cfg.users.iter().find(|u| u.role == "doctor").ok_or_else(|| "Aucun compte docteur".to_string())?;
     if !db_url.starts_with(&format!("mysql://{}:", doctor.mysql_user)) {

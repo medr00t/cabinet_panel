@@ -12,6 +12,7 @@ const users = [
   { id: 2, name: 'Réception Principale', code: '5678', role: 'reception' },
 ];
 
+let receptionCode: string | null = '5678';
 let nextId = 100;
 const id = () => ++nextId;
 
@@ -202,6 +203,9 @@ export async function mockInvoke(cmd: string, a: Obj): Promise<unknown> {
       return delay(row.id);
     }
     case 'delete_cnss_sheet': requireDoctor(url); cnssSheets.splice(cnssSheets.findIndex((x) => x.id === a.id), 1); return delay(null);
+    case 'get_reception_code': requireDoctor(url); return delay(receptionCode);
+    case 'set_reception_code': requireDoctor(url); receptionCode = a.code; return delay(null);
+    case 'change_doctor_login': requireDoctor(url); if (a.currentCode !== users[0].code) return Promise.reject('Le code actuel est incorrect'); if (a.newCode) users[0].code = a.newCode; return delay(null);
     case 'get_settings': return delay({ ...settings });
     case 'set_setting':
       if (!['cnss_inp', 'cnss_city', 'dentist_name'].includes(a.name)) fail('Paramètre inconnu');
