@@ -37,7 +37,7 @@ const Dashboard = () => {
     return { rows, total: rows.reduce((s, r) => s + r.due, 0) };
   }, [patients, balances]);
 
-  const first = (user?.name ?? '').replace(/^Dr\.?\s*/i, '').split(' ')[0];
+  const first = (user?.name ?? '').replace(/^Dr\.?\s*/i, '').trim();
 
   return (
     <div className="page">
