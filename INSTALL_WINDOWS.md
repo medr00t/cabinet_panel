@@ -90,3 +90,23 @@ Get-Process mysqld | Select Id, Path
   ```
 
 Ensuite, sur le poste de la base : **Reconfigurer ce poste → Ce poste garde la base de données** (cochez *Afficher le mot de passe*), puis sur l'autre poste : **Reconfigurer ce poste → se connecte à un autre poste**.
+
+## 10. Retirer la base de données d'un poste qui doit seulement se connecter
+
+Si un poste a déjà eu sa propre base de données (essai précédent) et doit maintenant se connecter à celle d'un autre poste, la recherche trouve d'abord la base **locale** (qui a un autre mot de passe) : « le serveur est là, mais le mot de passe est incorrect ».
+
+Sur ce poste **uniquement** (jamais sur le poste qui garde la vraie base de données), dans PowerShell :
+
+```
+Stop-Process -Name mysqld -Force
+Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name CentreDentaireBase -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\CentreDentaire"
+Remove-NetFirewallRule -DisplayName "Centre Dentaire - base de donnees" -ErrorAction SilentlyContinue
+```
+
+1. arrête l'ancienne base ;
+2. l'empêche de redémarrer avec Windows ;
+3. supprime ses fichiers (`%LOCALAPPDATA%\CentreDentaire\database`) : vérifiez avant qu'elle ne contient rien d'utile ;
+4. retire l'ancienne règle du pare-feu (l'erreur « accès refusé » peut être ignorée).
+
+Puis rouvrez l'application : **Reconfigurer ce poste → Ce poste se connecte à un autre poste**.
