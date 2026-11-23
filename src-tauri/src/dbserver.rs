@@ -352,14 +352,14 @@ fn register_autostart() {}
 /// Lets the other laptops reach the database. Needs administrator rights, so Windows shows its own
 /// confirmation; if it is declined, Windows still asks the first time another laptop connects.
 #[cfg(windows)]
-fn open_firewall(port: u16) {
+pub fn open_firewall(port: u16) {
     let args = format!(
-        "advfirewall firewall add rule name=\"Centre Dentaire - base de donnees\" dir=in action=allow protocol=TCP localport={} profile=private,domain", port);
+        "advfirewall firewall add rule name=\"Centre Dentaire - base de donnees\" dir=in action=allow protocol=TCP localport={} profile=any", port);
     let _ = quiet(Command::new("powershell").args(["-NoProfile", "-WindowStyle", "Hidden", "-Command",
         &format!("Start-Process netsh -ArgumentList '{}' -Verb RunAs -WindowStyle Hidden", args)])).output();
 }
 #[cfg(not(windows))]
-fn open_firewall(_port: u16) {}
+pub fn open_firewall(_port: u16) {}
 
 // Needs a MySQL archive on disk (the Linux "minimal" tarball): CABINET_TEST_ARCHIVE=/path/mysql-minimal.tar.xz
 #[cfg(test)]

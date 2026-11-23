@@ -105,6 +105,7 @@ pub async fn server_install(app: AppHandle, passphrase: String) -> Result<Server
         let (d, r) = (derive(&passphrase, "doctor"), derive(&passphrase, "reception"));
         tokio::task::spawn_blocking(move || dbserver::set_passwords(&d, &r)).await.map_err(|e| format!("Interrompu: {}", e))??;
         let s = dbserver::read_state()?;
+        dbserver::open_firewall(s.port); // asks Windows once more if the rule is missing
         return Ok(ServerInfo { version: s.version, port: s.port, address: local_address() });
     }
     let req = dbserver::InstallRequest {
@@ -217,13 +218,22 @@ pub async fn client_check(passphrase: String, role: String) -> Result<ClientChec
     let (user, password) = (if role == "doctor" { "guestx" } else { "reception" }, derive(&passphrase, &role));
     let h = host.clone();
     let tried = tokio::task::spawn_blocking(move || {
-        Conn::new(OptsBuilder::new().ip_or_hostname(Some(h)).tcp_port(dbserver::DEFAULT_PORT).user(Some(user)).pass(Some(password)).db_name(Some("cabinet")))
+        use std::time::Duration;
+        // reachable at all? a firewall that silently drops the connection must not leave the wizard waiting
+        let addr = std::net::ToSocketAddrs::to_socket_addrs(&format!("{}:{}", if h == "localhost" { "127.0.0.1" } else { h.as_str() }, dbserver::DEFAULT_PORT))
+            .map_err(|e| e.to_string())?.next().ok_or_else(|| "adresse introuvable".to_string())?;
+        std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(4))
+            .map_err(|_| "UNREACHABLE".to_string())?;
+        Conn::new(OptsBuilder::new().ip_or_hostname(Some(addr.ip().to_string())).tcp_port(dbserver::DEFAULT_PORT).user(Some(user)).pass(Some(password)).db_name(Some("cabinet"))
+            .tcp_connect_timeout(Some(Duration::from_secs(5))).read_timeout(Some(Duration::from_secs(40))).write_timeout(Some(Duration::from_secs(40))))
             .map(|_| ()).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?;
     Ok(match tried {
         Ok(()) => ClientCheck { ok: true, message: format!("Serveur trouvé ({})", if host == "localhost" { "ce poste".to_string() } else { host.clone() }), host: Some(host) },
         Err(e) if e.contains("1045") || e.to_lowercase().contains("access denied") =>
             ClientCheck { ok: false, host: Some(host), message: "Le serveur est là, mais le mot de passe du cabinet est incorrect.".to_string() },
+        Err(e) if e == "UNREACHABLE" =>
+            ClientCheck { ok: false, host: Some(host), message: "Le serveur est vu sur le réseau mais ne répond pas. Sur le poste de la base de données, autorisez MySQL dans le pare-feu Windows (ou désactivez-le pour tester).".to_string() },
         Err(e) => ClientCheck { ok: false, host: Some(host), message: format!("Connexion impossible : {}", e) },
     })
 }

@@ -54,3 +54,13 @@ Get-Process -Id (Get-NetTCPConnection -LocalPort 3306 -State Listen).OwningProce
   (remplacez `MySQL80` par le nom affiché dans `services.msc`)
 
 - Si ce MySQL contient des données à garder, ne l'arrêtez pas : il faut utiliser un autre port pour l'application.
+
+## 7. L'autre poste reste sur « Recherche du serveur »
+
+Le pare-feu du poste qui garde la base de données bloque sans doute le port 3306. Sur **ce poste** (celui de la base), dans PowerShell **en administrateur** :
+
+```
+netsh advfirewall firewall add rule name="Centre Dentaire - base de donnees" dir=in action=allow protocol=TCP localport=3306 profile=any
+```
+
+(Rouvrir **Reconfigurer ce poste → Ce poste garde la base de données** fait la même chose et Windows demande alors l'autorisation.) Vérifiez aussi que les deux ordinateurs sont sur le même Wi-Fi ou le même câble.
