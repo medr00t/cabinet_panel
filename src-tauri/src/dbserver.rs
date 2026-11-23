@@ -281,7 +281,13 @@ pub fn set_passwords(doctor: &str, reception: &str) -> Result<(), String> {
     for (user, pw) in [(DOCTOR_USER, doctor), (RECEPTION_USER, reception)] {
         root.query_drop(format!("ALTER USER '{}'@'%' IDENTIFIED BY '{}'", user, pw)).map_err(|e| format!("Changement du mot de passe: {}", e))?;
     }
-    root.query_drop("FLUSH PRIVILEGES").map_err(|e| e.to_string())
+    root.query_drop("FLUSH PRIVILEGES").map_err(|e| e.to_string())?;
+    // prove it: both accounts must now log in with the new passwords
+    for (user, pw) in [(DOCTOR_USER, doctor), (RECEPTION_USER, reception)] {
+        let o: Opts = OptsBuilder::new().ip_or_hostname(Some("127.0.0.1")).tcp_port(s.port).user(Some(user)).pass(Some(pw)).db_name(Some("cabinet")).into();
+        Conn::new(o).map_err(|e| format!("Le mot de passe a été enregistré mais le compte « {} » ne se connecte pas: {}", user, e))?;
+    }
+    Ok(())
 }
 
 pub fn install(req: &InstallRequest, emit: &dyn Fn(Progress)) -> Result<InstallResult, String> {
