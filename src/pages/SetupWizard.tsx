@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, Database, FileSpreadsheet, Laptop, Loader2, Network } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Database, Eye, EyeOff, FileSpreadsheet, Laptop, Loader2, Network } from 'lucide-react';
 import Logo from '../components/ui/Logo';
 import {
   FoundBackup, Role, ServerInfo, ServerProgress, SetupStatus, clientCheck, errorMessage, onServerProgress, serverInstall,
@@ -18,6 +18,7 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
   const [code, setCode] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
+  const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<ServerProgress | null>(null);
@@ -139,12 +140,15 @@ const SetupWizard = ({ onDone }: { onDone: () => void }) => {
                   <input id="sw-code" className="input" inputMode="numeric" maxLength={4} autoComplete="off" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
                   <span className="hint">C'est le code tapé sur le clavier de l'écran de connexion.</span></div>
                 <div className="field"><label htmlFor="sw-pass">Mot de passe du cabinet</label>
-                  <input id="sw-pass" className="input" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
+                  <input id="sw-pass" className="input" type={showPass ? 'text' : 'password'} autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
                   <span className="hint">{host ? 'Choisissez-le maintenant (8 caractères minimum) : le même sera demandé sur les autres postes.' : 'Le même que sur le poste qui garde la base de données.'}</span></div>
                 {host && (
                   <div className="field"><label htmlFor="sw-pass2">Confirmer le mot de passe du cabinet</label>
-                    <input id="sw-pass2" className="input" type="password" autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} /></div>
+                    <input id="sw-pass2" className="input" type={showPass ? 'text' : 'password'} autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} /></div>
                 )}
+                <button type="button" className="link" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setShowPass(!showPass)}>
+                  {showPass ? <EyeOff size={14} /> : <Eye size={14} />} {showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                </button>
                 {error && <span className="error" style={{ color: 'var(--bad)', fontSize: 13, fontWeight: 500 }}>{error}</span>}
                 <button className="btn btn-block" type="submit" disabled={busy}>{host ? (status?.serverInstalled ? 'Enregistrer' : 'Installer la base de données') : 'Chercher le serveur'} <ArrowRight /></button>
                 <button type="button" className="btn btn-ghost btn-block" onClick={() => { setError(''); setStep('mode'); }}><ArrowLeft /> Retour</button>
