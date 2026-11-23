@@ -163,11 +163,13 @@ fn extract(archive: &Path, l: &Layout) -> Result<(), String> {
 
 fn forward(p: &Path) -> String { p.to_string_lossy().replace('\\', "/") }
 
-fn write_ini(l: &Layout, port: u16) -> Result<(), String> {
+fn write_ini(l: &Layout, port: u16, skip_name_resolve: bool) -> Result<(), String> {
     let mut ini = format!(
         "[mysqld]\nbasedir={}\ndatadir={}\nport={}\nbind-address=0.0.0.0\nmysqlx=OFF\nskip-log-bin\n\
          character-set-server=utf8mb4\ninnodb_buffer_pool_size=128M\nmax_connections=60\nlog-error={}\npid-file={}\n",
         forward(&l.mysql), forward(&l.data), port, forward(&l.log), forward(&l.root.join("mysqld.pid")));
+    // without this MySQL looks up the name of every client first, which takes seconds on a home network
+    if skip_name_resolve { ini.push_str("skip-name-resolve\n"); }
     if !cfg!(windows) { ini.push_str(&format!("socket={}\n", forward(&l.root.join("mysql.sock")))); }
     std::fs::write(&l.ini, ini).map_err(|e| format!("Configuration de la base: {}", e))
 }
@@ -210,6 +212,18 @@ fn wait_ready(l: &Layout, port: u16, password: Option<&str>, timeout: Duration) 
     }
 }
 
+/// `skip-name-resolve` makes the 'localhost' accounts unusable over TCP, so root also gets a '127.0.0.1' account first;
+/// the setting takes effect at the next start of the server.
+fn enable_skip_name_resolve(l: &Layout, state: &ServerState) -> Result<(), String> {
+    let has = std::fs::read_to_string(&l.ini).map(|t| t.contains("skip-name-resolve")).unwrap_or(false);
+    if has { return Ok(()); }
+    let mut root = Conn::new(opts(state.port, Some(&state.root_password), None)).map_err(|e| format!("Connexion à la base: {}", e))?;
+    let sql = |e: mysql::Error| format!("Configuration de la base: {}", e);
+    root.query_drop(format!("CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '{}'", state.root_password)).map_err(sql)?;
+    root.query_drop("GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION").map_err(sql)?;
+    write_ini(l, state.port, true)
+}
+
 /// Starts the managed server if it is installed and not already running. Returns true when it was started now.
 pub fn start_if_needed() -> Result<bool, String> {
     // the app start and the login screen both call this: only one may launch the server
@@ -217,10 +231,11 @@ pub fn start_if_needed() -> Result<bool, String> {
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !is_installed() { return Ok(false); }
     let state = read_state()?;
-    if port_open(state.port) { return Ok(false); }
     let l = layout()?;
+    if port_open(state.port) { let _ = enable_skip_name_resolve(&l, &state); return Ok(false); }
     spawn_server(&l)?;
     wait_ready(&l, state.port, Some(&state.root_password), Duration::from_secs(120))?;
+    let _ = enable_skip_name_resolve(&l, &state);
     Ok(true)
 }
 
@@ -299,7 +314,7 @@ pub fn install(req: &InstallRequest, emit: &dyn Fn(Progress)) -> Result<InstallR
     // 2. the data folder (a half-finished earlier attempt is wiped: it is our own folder)
     say(emit, "initialize", None, "Préparation de la base de données…");
     let _ = std::fs::remove_dir_all(&l.data);
-    write_ini(&l, port)?;
+    write_ini(&l, port, false)?;
     let init = quiet(Command::new(mysqld_in(&l.mysql)).arg(format!("--defaults-file={}", l.ini.display())).arg("--initialize-insecure")).output()
         .map_err(|e| format!("Préparation de la base impossible: {}", e))?;
     if !init.status.success() {
@@ -330,6 +345,8 @@ pub fn install(req: &InstallRequest, emit: &dyn Fn(Progress)) -> Result<InstallR
     root.query_drop("FLUSH PRIVILEGES").map_err(sql)?;
     let state = ServerState { version: version.clone(), port, root_password: root_pw, installed_at: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string() };
     std::fs::write(&l.state, serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?).map_err(|e| format!("État de la base: {}", e))?;
+
+    let _ = enable_skip_name_resolve(&l, &state);
 
     // 5. come back by itself when Windows starts (best effort: the app also starts it when it opens)
     say(emit, "finish", None, "Dernières vérifications…");
@@ -408,6 +425,21 @@ mod tests {
         let n: Option<i64> = root.query_first("SELECT COUNT(*) FROM patients").unwrap();
         assert_eq!(n, Some(0));
         drop(root);
+        // an installation made before this setting existed gets it on its next start
+        let ini = home.join("my.ini");
+        assert!(std::fs::read_to_string(&ini).unwrap().contains("skip-name-resolve"));
+        std::fs::write(&ini, std::fs::read_to_string(&ini).unwrap().replace("skip-name-resolve\n", "")).unwrap();
+        stop().unwrap();
+        let t = Instant::now();
+        while port_open(3399) && t.elapsed() < Duration::from_secs(60) { std::thread::sleep(Duration::from_millis(300)); }
+        assert!(start_if_needed().unwrap());
+        assert!(std::fs::read_to_string(&ini).unwrap().contains("skip-name-resolve"));
+        stop().unwrap();
+        let t = Instant::now();
+        while port_open(3399) && t.elapsed() < Duration::from_secs(60) { std::thread::sleep(Duration::from_millis(300)); }
+        assert!(start_if_needed().unwrap(), "restart with skip-name-resolve");
+        Conn::new(Opts::from_url(&root_url().unwrap()).unwrap()).expect("root over 127.0.0.1 with skip-name-resolve");
+        Conn::new(Opts::from_url(&url("reception", "ReceptionPass123")).unwrap()).expect("reception with skip-name-resolve");
         set_passwords("NewDoctor1234", "NewReception1234").expect("set passwords");
         assert!(Conn::new(Opts::from_url(&url("guestx", "DoctorPass123")).unwrap()).is_err(), "old password must stop working");
         Conn::new(Opts::from_url(&url("guestx", "NewDoctor1234")).unwrap()).expect("new doctor password");

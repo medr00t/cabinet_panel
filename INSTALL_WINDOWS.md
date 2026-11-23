@@ -64,3 +64,11 @@ netsh advfirewall firewall add rule name="Centre Dentaire - base de donnees" dir
 ```
 
 (Rouvrir **Reconfigurer ce poste → Ce poste garde la base de données** fait la même chose et Windows demande alors l'autorisation.) Vérifiez aussi que les deux ordinateurs sont sur le même Wi-Fi ou le même câble.
+
+## 8. Connexion lente entre les postes
+
+La base de données n'interroge plus le nom de chaque poste qui se connecte (`skip-name-resolve`), ce qui prenait plusieurs secondes. Sur un poste déjà installé, le réglage est appliqué au **prochain démarrage** de la base : fermez-la une fois puis rouvrez l'application, dans PowerShell :
+
+```
+Stop-Process -Name mysqld -Force
+```
