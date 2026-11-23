@@ -72,3 +72,21 @@ La base de données n'interroge plus le nom de chaque poste qui se connecte (`sk
 ```
 Stop-Process -Name mysqld -Force
 ```
+
+## 9. « Le serveur est là, mais le mot de passe est incorrect » (alors que c'est le même mot de passe)
+
+Il peut y avoir **deux** serveurs MySQL sur le poste de la base de données : celui de l'application et un autre qui écoute aussi sur le port 3306. Sur ce poste, dans PowerShell :
+
+```
+Get-NetTCPConnection -LocalPort 3306 -State Listen | Select LocalAddress, LocalPort, OwningProcess
+Get-Process mysqld | Select Id, Path
+```
+
+- **Une seule ligne**, avec un chemin qui contient `CentreDentaire\database` : c'est normal, le problème est ailleurs.
+- **Deux lignes** (deux adresses ou deux processus) : arrêtez tous les `mysqld`, puis rouvrez l'application, qui relance le bon :
+
+  ```
+  Stop-Process -Name mysqld -Force
+  ```
+
+Ensuite, sur le poste de la base : **Reconfigurer ce poste → Ce poste garde la base de données** (cochez *Afficher le mot de passe*), puis sur l'autre poste : **Reconfigurer ce poste → se connecte à un autre poste**.
