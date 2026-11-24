@@ -24,7 +24,7 @@ En bas du menu de gauche : **−** / **+** (mémorisé sur chaque poste), **100 
 ## Mises à jour (à distance, AnyDesk, sans rien installer)
 
 1. Connexion AnyDesk au poste serveur.
-2. Transfert de fichiers AnyDesk : envoyer le nouveau **`cabinet-web.zip`** dans le dossier du serveur (là où se trouve `DEMARRER-CABINET.bat`).
+2. Mettre le nouveau **`cabinet-web.zip`** dans le dossier du serveur (là où se trouve `METTRE-A-JOUR.bat`) **ou dans Téléchargements** (transfert AnyDesk, ou téléchargement depuis GitHub). Un nom comme `cabinet-web (1).zip` convient aussi.
 3. Double-clic sur **`METTRE-A-JOUR.bat`**. Il arrête le serveur, remplace le programme et le redémarre. Les données, codes et sauvegardes ne sont **jamais** touchés ; si la nouvelle version modifie la base, la modification s'applique toute seule.
 4. Sur chaque poste : F5.
 
