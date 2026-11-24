@@ -14,6 +14,7 @@ use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::{access, backup, cnss, config, dbserver, ledger};
 
@@ -206,6 +207,8 @@ pub async fn serve() -> Result<(), String> {
         .route("/api/call/{cmd}", post(call))
         .route("/api/backup/{file}", get(download_backup))
         .fallback_service(ServeDir::new(&web).fallback(ServeFile::new(web.join("index.html"))))
+        // always re-check the page after an update, so no laptop keeps running an old version
+        .layer(SetResponseHeaderLayer::if_not_present(header::CACHE_CONTROL, header::HeaderValue::from_static("no-cache")))
         .with_state(state);
 
     let port: u16 = std::env::var("CABINET_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);

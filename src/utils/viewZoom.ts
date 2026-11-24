@@ -10,6 +10,7 @@ export const getZoom = (): number => {
 export const setZoom = (value: number): number => {
   const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value * 100) / 100));
   document.documentElement.style.setProperty('zoom', String(z));
+  document.documentElement.style.setProperty('--zoom', String(z)); // CSS zoom scales 100vh too: divide it back
   try { localStorage.setItem(KEY, String(z)); } catch { /* not remembered */ }
   return z;
 };
