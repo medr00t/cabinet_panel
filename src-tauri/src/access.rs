@@ -32,13 +32,13 @@ pub fn write_reception_code(db_url: &str, code: &str) -> Result<(), String> {
     ).map_err(|e| format!("Enregistrement du code: {}", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_reception_code(db_url: String) -> Result<Option<String>, String> {
     only_doctor(&db_url)?;
     tokio::task::spawn_blocking(move || read_reception_code(&db_url)).await.map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_reception_code(code: String, db_url: String) -> Result<(), String> {
     only_doctor(&db_url)?;
     valid_code(&code)?;
@@ -46,7 +46,7 @@ pub async fn set_reception_code(code: String, db_url: String) -> Result<(), Stri
 }
 
 /// Changes the doctor's login code and/or security answer on this laptop; the current code is asked again.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn change_doctor_login(current_code: String, new_code: Option<String>, new_answer: Option<String>, db_url: String) -> Result<(), String> {
     only_doctor(&db_url)?;
     let mut cfg = (*config::get()?).clone();

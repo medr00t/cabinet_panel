@@ -507,6 +507,7 @@ pub fn require_doctor(db_url: &str) -> Result<std::sync::Arc<config::AppConfig>,
 }
 
 // Doctor only: called after a doctor logs in (automatic) and by the "Sauvegarde Excel" button (full).
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn export_backup(app: tauri::AppHandle, db_url: String, full: Option<bool>) -> Result<BackupResult, String> {
     use tauri::Manager;
@@ -663,6 +664,7 @@ pub fn backup_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
     if path.is_file() { Ok(path) } else { Err("Fichier de sauvegarde introuvable".to_string()) }
 }
 
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn list_backups(app: tauri::AppHandle, db_url: String) -> Result<BackupList, String> {
     use tauri::Manager;
@@ -675,6 +677,7 @@ pub async fn list_backups_in(documents: Option<PathBuf>, db_url: String) -> Resu
     Ok(BackupList { files: list_backup_files(&dir), dir: dir.display().to_string() })
 }
 
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn restore_backup(app: tauri::AppHandle, db_url: String, file: String) -> Result<RestoreResult, String> {
     use tauri::Manager;

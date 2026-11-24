@@ -29,3 +29,4 @@ server/.env
 # Windows installer output
 release-windows/*
 !release-windows/*.exe
+server/backups/

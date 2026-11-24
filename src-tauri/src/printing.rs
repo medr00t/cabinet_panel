@@ -26,7 +26,7 @@ fn open_with_system(path: &PathBuf) -> Result<(), String> {
 }
 
 /// Saves a base64-encoded PDF to the temp folder and opens it. Returns the file path.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_pdf(name: String, data: String) -> Result<String, String> {
     let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|_| "PDF invalide".to_string())?;
     if !bytes.starts_with(b"%PDF-") {

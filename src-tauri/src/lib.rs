@@ -4,7 +4,9 @@ mod cnss;
 mod config;
 mod dbserver;
 mod ledger;
+#[cfg(feature = "desktop")]
 mod onboarding;
+#[cfg(feature = "desktop")]
 mod printing;
 pub mod web;
 
@@ -168,7 +170,7 @@ pub struct AuthResult {
 // TAURI COMMANDS - ALL USE DYNAMIC MYSQL CONNECTIONS
 // ----------------------------------------------------------------------------------------------------------------------
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn authenticate_user(code: String, host: Option<String>) -> Result<AuthResult, String> {
     let host = resolve_host(host)?;
     let config = config::get()?;
@@ -224,7 +226,7 @@ async fn authenticate_user(code: String, host: Option<String>) -> Result<AuthRes
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn add_patient(patient: Patient, db_url: String) -> Result<i64, String> {
     println!("[DEBUG] Adding patient to MySQL: {:?}", patient);
     
@@ -283,7 +285,7 @@ async fn add_patient(patient: Patient, db_url: String) -> Result<i64, String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn get_patients(db_url: String) -> Result<Vec<Patient>, String> {
     println!("[DEBUG] Fetching patients from MySQL database...");
     
@@ -328,7 +330,7 @@ async fn get_patients(db_url: String) -> Result<Vec<Patient>, String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn update_patient(id: i64, patient: Patient, db_url: String) -> Result<(), String> {
     if patient.first_name.trim().is_empty() || patient.last_name.trim().is_empty() || patient.phone.trim().is_empty() {
         return Err("Le prénom, le nom et le téléphone sont obligatoires".to_string());
@@ -348,7 +350,7 @@ async fn update_patient(id: i64, patient: Patient, db_url: String) -> Result<(),
     ).map_err(|e| ledger::friendly_db_error("Erreur lors de la modification du patient", &e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn delete_patient(id: i64, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     let mut tx = conn.start_transaction(TxOpts::default()).map_err(|e| format!("Transaction: {}", e))?;
@@ -369,7 +371,7 @@ async fn delete_patient(id: i64, db_url: String) -> Result<(), String> {
     tx.commit().map_err(|e| format!("Erreur lors de la suppression du patient: {}", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn add_appointment(appointment: Appointment, db_url: String) -> Result<i64, String> {
     println!("[DEBUG] Adding appointment to MySQL: {:?}", appointment);
     
@@ -408,7 +410,7 @@ async fn add_appointment(appointment: Appointment, db_url: String) -> Result<i64
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn get_appointments(db_url: String) -> Result<Vec<Appointment>, String> {
     println!("[DEBUG] Fetching appointments from MySQL database...");
     
@@ -466,7 +468,7 @@ async fn get_appointments(db_url: String) -> Result<Vec<Appointment>, String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn get_patient_appointments(patient_id: i64, db_url: String) -> Result<Vec<Appointment>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     let appointments: Vec<Appointment> = conn.exec_map(
@@ -491,7 +493,7 @@ async fn get_patient_appointments(patient_id: i64, db_url: String) -> Result<Vec
     Ok(appointments)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn update_appointment(id: i64, appointment: Appointment, db_url: String) -> Result<(), String> {
     if appointment.treatment_type.trim().is_empty() {
         return Err("Le type de soin est obligatoire".to_string());
@@ -507,21 +509,21 @@ async fn update_appointment(id: i64, appointment: Appointment, db_url: String) -
     .map_err(|e| format!("Erreur lors de la modification du rendez-vous: {}", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn update_appointment_status(id: i64, status: String, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_drop("UPDATE appointments SET status = ? WHERE id = ?", (status, id))
         .map_err(|e| format!("Erreur lors de la mise à jour du rendez-vous: {}", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn delete_appointment(id: i64, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_drop("DELETE FROM appointments WHERE id = ?", (id,))
         .map_err(|e| format!("Erreur lors de la suppression du rendez-vous: {}", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn add_payment(payment: Payment, db_url: String) -> Result<i64, String> {
     println!("[DEBUG] Adding payment to MySQL: {:?}", payment);
     
@@ -562,7 +564,7 @@ async fn add_payment(payment: Payment, db_url: String) -> Result<i64, String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn get_payments_by_date(date: String, db_url: String) -> Result<Vec<Payment>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_map(
@@ -638,7 +640,7 @@ fn daily_summaries(db_url: &str, date: &str, only_staff: Option<i64>) -> Result<
     Ok(summaries)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn get_daily_summary_by_staff(date: String, staff_id: i64, db_url: String) -> Result<DailySummary, String> {
     let mut found = daily_summaries(&db_url, &date, Some(staff_id))?;
     Ok(found.pop().unwrap_or_else(|| DailySummary {
@@ -649,12 +651,12 @@ async fn get_daily_summary_by_staff(date: String, staff_id: i64, db_url: String)
     }))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn get_daily_summary_all_staff(date: String, db_url: String) -> Result<Vec<DailySummary>, String> {
     daily_summaries(&db_url, &date, None)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 fn verify_doctor_answer(answer: String) -> Result<bool, String> {
     let cfg = config::get()?;
     Ok(answer.trim().to_lowercase() == cfg.doctor_security_answer.trim().to_lowercase())
@@ -694,7 +696,7 @@ async fn scan_subnet(prefix: [u8; 3], skip: u8) -> Option<String> {
 
 // Finds the MySQL server on the local network so reception laptops need no manual IP:
 // tries the remembered host, then localhost, then every address of this machine's /24.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn discover_server(saved_host: Option<String>) -> Result<Option<String>, String> {
     use std::net::{IpAddr, SocketAddr, UdpSocket};
 
@@ -730,7 +732,7 @@ async fn discover_server(saved_host: Option<String>) -> Result<Option<String>, S
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn test_database_connection(db_url: String) -> Result<String, String> {
     match test_connection(&db_url).await {
         Ok(_) => Ok("Connexion réussie à la base de données".to_string()),
@@ -738,7 +740,7 @@ async fn test_database_connection(db_url: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 async fn reconnect_database(code: String, host: Option<String>) -> Result<AuthResult, String> {
     println!("[DEBUG] Attempting to reconnect with code: {}", code);
     
@@ -747,6 +749,7 @@ async fn reconnect_database(code: String, host: Option<String>) -> Result<AuthRe
 }
 
 // App configuration  
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Started at Windows login to keep the cabinet database up: no window, just the database.

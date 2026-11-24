@@ -34,7 +34,7 @@ pub struct SetupStatus {
     pub platform: String,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn setup_status(app: AppHandle) -> Result<SetupStatus, String> {
     let installed = dbserver::is_installed();
     let running = installed && dbserver::read_state().map(|s| dbserver::port_open(s.port)).unwrap_or(false);
@@ -67,7 +67,7 @@ fn check_input(i: &SetupInput) -> Result<(), String> {
 }
 
 /// Writes this laptop's `cabinet_config.json`: only its own user, with the derived database password.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn setup_save_config(app: AppHandle, input: SetupInput, force: Option<bool>) -> Result<(), String> {
     check_input(&input)?;
     let dir = config_dir(&app)?;
@@ -97,7 +97,7 @@ fn local_address() -> Option<String> {
 }
 
 /// Installs and starts the database on this laptop. Progress is sent as `server-progress` events.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn server_install(app: AppHandle, passphrase: String) -> Result<ServerInfo, String> {
     if passphrase.chars().count() < 8 { return Err("Le mot de passe du cabinet doit faire au moins 8 caractères".to_string()); }
     if dbserver::is_installed() {
@@ -121,7 +121,7 @@ pub async fn server_install(app: AppHandle, passphrase: String) -> Result<Server
 }
 
 /// Makes sure the database of this laptop is running (the wizard and the login screen call it).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn server_start() -> Result<bool, String> {
     tokio::task::spawn_blocking(dbserver::start_if_needed).await.map_err(|e| format!("Démarrage interrompu: {}", e))?
 }
@@ -186,13 +186,13 @@ fn find_backups(app: &AppHandle) -> Vec<FoundBackup> {
 }
 
 /// Looks for backup workbooks in the usual places (Documents, Desktop, Downloads, USB drives).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn setup_find_backups(app: AppHandle) -> Result<Vec<FoundBackup>, String> {
     tokio::task::spawn_blocking(move || find_backups(&app)).await.map_err(|e| format!("Recherche interrompue: {}", e))
 }
 
 /// Restores a backup found by `setup_find_backups` into the database of this laptop.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn setup_restore(app: AppHandle, path: String) -> Result<backup::RestoreResult, String> {
     tokio::task::spawn_blocking(move || {
         let wanted = std::fs::canonicalize(&path).map_err(|_| "Fichier de sauvegarde introuvable".to_string())?;
@@ -209,7 +209,7 @@ pub async fn setup_restore(app: AppHandle, path: String) -> Result<backup::Resto
 pub struct ClientCheck { pub ok: bool, pub host: Option<String>, pub message: String }
 
 /// "Does this laptop reach the cabinet's database with this shared password?" Used by the wizard of a connected laptop.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn client_check(passphrase: String, role: String) -> Result<ClientCheck, String> {
     if role != "reception" && role != "doctor" { return Err("Rôle inconnu".to_string()); }
     let Some(host) = crate::discover_server(None).await? else {

@@ -179,8 +179,62 @@ fn web_dir() -> PathBuf {
     match beside_exe { Some(d) if d.join("index.html").is_file() => d, _ => PathBuf::from("dist") }
 }
 
+/// First start in Docker: writes the config file from environment variables (never overwrites an existing one,
+/// because the doctor can change the codes from the app).
+fn bootstrap_config(dir: &std::path::Path) -> Result<(), String> {
+    if config::exists(dir) { return Ok(()); }
+    let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    let (Some(doctor_code), Some(reception_code), Some(doctor_pw), Some(reception_pw)) =
+        (var("DOCTOR_CODE"), var("RECEPTION_CODE"), var("DOCTOR_DB_PASSWORD"), var("RECEPTION_DB_PASSWORD")) else { return Ok(()); };
+    for (what, code) in [("DOCTOR_CODE", &doctor_code), ("RECEPTION_CODE", &reception_code)] {
+        if code.len() != 4 || !code.chars().all(|c| c.is_ascii_digit()) { return Err(format!("{} doit contenir exactement 4 chiffres", what)); }
+    }
+    let cfg = config::AppConfig {
+        users: vec![
+            config::UserEntry { id: 1, name: var("DOCTOR_NAME").unwrap_or_else(|| "Docteur".into()), code: doctor_code, role: "doctor".into(),
+                mysql_user: var("DOCTOR_DB_USER").unwrap_or_else(|| "guestx".into()), mysql_password: doctor_pw },
+            config::UserEntry { id: 2, name: "Réception".into(), code: reception_code, role: "reception".into(),
+                mysql_user: var("RECEPTION_DB_USER").unwrap_or_else(|| "reception".into()), mysql_password: reception_pw },
+        ],
+        doctor_security_answer: String::new(),
+        backup_dir: None,
+    };
+    config::save(dir, &cfg)?;
+    println!("Configuration créée dans {}", dir.display());
+    Ok(())
+}
+
+/// Applies the SQL files of database/updates/ that were not applied yet (once each, in name order), so an update
+/// that changes the database needs nothing more than a restart. Waits for the database to come up.
+fn apply_updates(db_url: &str, dir: &std::path::Path) -> Result<Vec<String>, String> {
+    use mysql::prelude::*;
+    let mut files: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().map(|x| x == "sql").unwrap_or(false)).collect(),
+        Err(_) => return Ok(vec![]),
+    };
+    files.sort();
+    let mut conn = mysql::Conn::new(db_url).map_err(|e| format!("Connexion à la base de données: {}", e))?;
+    conn.query_drop("CREATE TABLE IF NOT EXISTS schema_updates (name VARCHAR(120) PRIMARY KEY, applied_at DATETIME NOT NULL)")
+        .map_err(|e| format!("Table des mises à jour: {}", e))?;
+    let mut done = vec![];
+    for path in files {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let known: Option<String> = conn.exec_first("SELECT name FROM schema_updates WHERE name = ?", (&name,)).map_err(|e| e.to_string())?;
+        if known.is_some() { continue; }
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", name, e))?;
+        let sql: String = text.lines().filter(|l| !l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n");
+        for stmt in sql.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            conn.query_drop(stmt).map_err(|e| format!("Mise à jour {}: {}", name, e))?;
+        }
+        conn.exec_drop("INSERT INTO schema_updates (name, applied_at) VALUES (?, NOW())", (&name,)).map_err(|e| e.to_string())?;
+        done.push(name);
+    }
+    Ok(done)
+}
+
 pub async fn serve() -> Result<(), String> {
     let dir = default_config_dir();
+    bootstrap_config(&dir)?;
     config::load(dir.clone());
     config::get().map_err(|e| format!("{}\n(dossier de configuration: {})", e, dir.display()))?;
 
@@ -190,6 +244,23 @@ pub async fn serve() -> Result<(), String> {
         Ok(false) => {}
         Err(e) => eprintln!("Base de données: {}", e),
     });
+
+    // database updates shipped with a new version (Docker: /app/updates; elsewhere: database/updates next to the program)
+    if let Some(updates) = std::env::var("CABINET_UPDATES_DIR").ok().map(PathBuf::from).or_else(|| Some(PathBuf::from("database/updates"))) {
+        let host = std::env::var("CABINET_DB_HOST").unwrap_or_else(|_| "localhost".into());
+        if let Some(doctor) = config::get().ok().and_then(|c| c.users.iter().find(|u| u.role == "doctor").cloned()) {
+            let url = crate::get_dynamic_url(&doctor.mysql_user, &doctor.mysql_password, &host);
+            std::thread::spawn(move || {
+                for attempt in 1..=40 {
+                    match apply_updates(&url, &updates) {
+                        Ok(done) => { for n in done { println!("Mise à jour de la base appliquée: {}", n); } return; }
+                        Err(e) if attempt < 40 => { if attempt == 1 { println!("Base de données pas encore prête ({}). Nouvel essai…", e); } std::thread::sleep(Duration::from_secs(3)); }
+                        Err(e) => eprintln!("Mises à jour de la base: {}", e),
+                    }
+                }
+            });
+        }
+    }
 
     let web = web_dir();
     if !web.join("index.html").is_file() {

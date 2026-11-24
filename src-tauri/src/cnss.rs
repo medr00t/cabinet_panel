@@ -29,7 +29,7 @@ fn db(context: &str, e: mysql::Error) -> String {
     format!("{}: {}", context, e)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_cnss_sheets(patient_id: i64, db_url: String) -> Result<Vec<CnssSheet>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_map(
@@ -42,7 +42,7 @@ pub async fn get_cnss_sheets(patient_id: i64, db_url: String) -> Result<Vec<Cnss
     .map_err(|e| db("Lecture des feuilles CNSS", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn save_cnss_sheet(sheet: CnssSheet, db_url: String) -> Result<i64, String> {
     if sheet.data.len() > MAX_DATA {
         return Err("Feuille CNSS trop volumineuse".to_string());
@@ -73,20 +73,20 @@ pub async fn save_cnss_sheet(sheet: CnssSheet, db_url: String) -> Result<i64, St
 }
 
 // Doctor only: the reception MySQL account has no DELETE privilege on this table.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_cnss_sheet(id: i64, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_drop("DELETE FROM cnss_sheets WHERE id = ?", (id,)).map_err(|e| db("Suppression de la feuille CNSS", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_settings(db_url: String) -> Result<HashMap<String, String>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     let rows: Vec<(String, Option<String>)> = conn.query("SELECT name, value FROM settings").map_err(|e| db("Lecture des paramètres", e))?;
     Ok(rows.into_iter().map(|(k, v)| (k, v.unwrap_or_default())).collect())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_setting(name: String, value: String, db_url: String) -> Result<(), String> {
     if !SETTINGS.contains(&name.as_str()) {
         return Err("Paramètre inconnu".to_string());

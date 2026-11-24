@@ -1,11 +1,11 @@
-# Cabinet database server. Run on ONE machine: `docker compose up -d`
+# Cabinet server (database + web app). Run on ONE machine: `docker compose up -d --build`
 services:
   mysql:
     image: mysql:8.4
     container_name: cabinet-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"   # the web app reaches it inside Docker; nothing else on the network needs it
     env_file: .env
     environment:
       MYSQL_DATABASE: cabinet
@@ -21,5 +21,22 @@ services:
       timeout: 3s
       retries: 20
 
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: cabinet-web
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${CABINET_WEB_PORT:-8080}:8080"
+    env_file: .env
+    volumes:
+      - cabinet-config:/data      # codes and passwords (created on the first start)
+      - ./backups:/backups        # Excel backups, visible in the folder server\backups
+
 volumes:
   cabinet-data:
+  cabinet-config:

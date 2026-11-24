@@ -1,3 +1,5 @@
+> Avec Docker (recommandé, mises à jour simples) : voir [INSTALL_DOCKER.md](INSTALL_DOCKER.md).
+
 # Centre Dentaire — version web (mode d'emploi)
 
 Un seul poste fait le **serveur** (il garde la base de données). Tous les autres postes ouvrent simplement une adresse dans **Chrome** : rien à installer, rien à configurer.

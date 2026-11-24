@@ -139,7 +139,7 @@ fn insert_payment(
     Ok(tx.last_insert_id().unwrap_or(0) as i64)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn add_treatment(
     treatment: Treatment, paid_now: f64, payment_method: String, db_url: String,
 ) -> Result<i64, String> {
@@ -174,7 +174,7 @@ pub async fn add_treatment(
     Ok(id)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_treatment(treatment: Treatment, db_url: String) -> Result<(), String> {
     validate_treatment(&treatment)?;
     let id = treatment.id.ok_or_else(|| "Acte inconnu".to_string())?;
@@ -196,7 +196,7 @@ pub async fn update_treatment(treatment: Treatment, db_url: String) -> Result<()
 }
 
 // Doctor only: the reception MySQL account has no DELETE privilege on these tables.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_treatment(id: i64, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     let mut tx = conn.start_transaction(TxOpts::default()).map_err(|e| db_err("Transaction", e))?;
@@ -207,7 +207,7 @@ pub async fn delete_treatment(id: i64, db_url: String) -> Result<(), String> {
     tx.commit().map_err(|e| db_err("Validation", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_patient_treatments(patient_id: i64, db_url: String) -> Result<Vec<Treatment>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_map(
@@ -231,7 +231,7 @@ pub async fn get_patient_treatments(patient_id: i64, db_url: String) -> Result<V
     .map_err(|e| db_err("Lecture des actes", e))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn add_treatment_payment(
     treatment_id: i64, amount: f64, payment_method: String, payment_date: String, collected_by: i64,
     db_url: String,
@@ -255,7 +255,7 @@ pub async fn add_treatment_payment(
     Ok(id)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_treatment_payments(treatment_id: i64, db_url: String) -> Result<Vec<TreatmentPayment>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_map(
@@ -270,7 +270,7 @@ pub async fn get_treatment_payments(treatment_id: i64, db_url: String) -> Result
 }
 
 // Doctor only (reception has no DELETE on payments): used to correct a mistaken entry.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_payment(id: i64, db_url: String) -> Result<(), String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_drop("DELETE FROM payments WHERE id = ?", (id,))
@@ -278,7 +278,7 @@ pub async fn delete_payment(id: i64, db_url: String) -> Result<(), String> {
 }
 
 // Totals per patient, for the "Reste à payer" column of the patient list and the dashboard.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_patient_balances(db_url: String) -> Result<Vec<PatientBalance>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.query_map(
@@ -291,7 +291,7 @@ pub async fn get_patient_balances(db_url: String) -> Result<Vec<PatientBalance>,
 }
 
 // Next free N° Billet: highest numeric billet + 1 (non-numeric billets are ignored).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_next_billet_number(db_url: String) -> Result<String, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     // MAX() is NULL on an empty table, hence the inner Option.
@@ -301,7 +301,7 @@ pub async fn get_next_billet_number(db_url: String) -> Result<String, String> {
     Ok((max.flatten().unwrap_or(0) + 1).to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_tooth_marks(patient_id: i64, db_url: String) -> Result<Vec<ToothMark>, String> {
     let mut conn = get_connection_with_retry(&db_url, 3).await?;
     conn.exec_map(
@@ -313,7 +313,7 @@ pub async fn get_tooth_marks(patient_id: i64, db_url: String) -> Result<Vec<Toot
 }
 
 // Upsert only (no DELETE): clearing a tooth means status '' and no note, so reception can do it too.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_tooth_mark(mark: ToothMark, db_url: String) -> Result<(), String> {
     if !valid_tooth(&mark.tooth) {
         return Err("Numéro de dent invalide".to_string());

@@ -15,13 +15,18 @@ default-run = "cabinet_panel"
 name = "cabinet_panel_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = ["desktop"]
+# the Windows/Linux desktop app; the web server (Docker) is built with --no-default-features
+desktop = ["dep:tauri", "dep:tauri-plugin-opener", "dep:tauri-plugin-fs"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tracing"] }
-tauri-plugin-opener = "2"
-tauri-plugin-fs = "2"
+tauri = { version = "2", features = ["tracing"], optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+tauri-plugin-fs = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -38,6 +43,11 @@ tower-http = { version = "0.6", features = ["fs", "set-header"] }
 [dev-dependencies]
 zip = { version = "9.1.0", default-features = false, features = ["deflate"] }
 
+
+[[bin]]
+name = "cabinet_panel"
+path = "src/main.rs"
+required-features = ["desktop"]
 
 [[bin]]
 name = "cabinet_web"

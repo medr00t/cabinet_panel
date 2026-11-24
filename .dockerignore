@@ -1,0 +1,9 @@
+.git
+node_modules
+dist
+src-tauri/target
+src-tauri/cabinet_data
+release-windows
+release-web
+server/.env
+*.log
