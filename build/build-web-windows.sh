@@ -22,6 +22,7 @@ docker run --rm \
     cp src-tauri/target/x86_64-pc-windows-msvc/release/cabinet_web.exe release-web/cabinet-web/
     cp -r dist release-web/cabinet-web/dist
     cp build/DEMARRER-CABINET.bat release-web/cabinet-web/
+    cp build/IP-FIXE.bat release-web/cabinet-web/
     cp build/METTRE-A-JOUR-SANS-DOCKER.bat release-web/cabinet-web/METTRE-A-JOUR.bat
     mkdir -p release-web/cabinet-web/database && cp -r database/updates release-web/cabinet-web/database/updates
     chown -R '"$(id -u):$(id -g)"' release-web node_modules dist 2>/dev/null || true

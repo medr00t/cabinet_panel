@@ -14,7 +14,7 @@ Le serveur reprend la base de données et le fichier de codes déjà présents s
 
 Ouvrir Chrome et taper l'adresse affichée par le serveur, par exemple **`http://NOM-DU-PC:8080`** (ou `http://192.168.1.152:8080`). Ajouter la page aux favoris. Se connecter avec son code à 4 chiffres.
 
-> Si l'adresse change un jour (rare), utiliser celle affichée dans la fenêtre du serveur. Pour qu'elle ne change jamais : « Réservation DHCP » dans le routeur (192.168.1.1) pour ce poste. C'est facultatif.
+> **Adresse qui ne change plus :** sur le serveur, clic droit sur **`IP-FIXE.bat` → Exécuter en tant qu'administrateur** (une seule fois). Il fixe l'adresse actuelle du poste. (Mieux encore, si possible : « Réservation DHCP » dans le routeur, 192.168.1.1.) Sinon, utiliser l'adresse affichée dans la fenêtre du serveur.
 
 ## Zoom et plein écran
 
