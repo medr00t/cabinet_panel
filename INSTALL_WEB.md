@@ -17,6 +17,10 @@ Ouvrir Chrome et taper l'adresse affichée par le serveur, par exemple **`http:/
 
 > **Adresse qui ne change plus :** sur le serveur, clic droit sur **`IP-FIXE.bat` → Exécuter en tant qu'administrateur** (une seule fois). Il fixe l'adresse actuelle du poste. (Mieux encore, si possible : « Réservation DHCP » dans le routeur, 192.168.1.1.) Sinon, utiliser l'adresse affichée dans la fenêtre du serveur.
 
+## Le compte docteur
+
+Le code du docteur ne fonctionne **que sur le poste du serveur** (le portable du docteur). Depuis un autre poste, il est refusé comme un mauvais code. La réception se connecte de n'importe quel poste avec son propre code. (Pour autoriser un autre poste précis : variable `CABINET_DOCTOR_IPS`, adresses séparées par des virgules.)
+
 ## Zoom et plein écran
 
 En bas du menu de gauche : **−** / **+** (mémorisé sur chaque poste), **100 %** pour revenir à la normale, bouton **plein écran** (ou `F11`).

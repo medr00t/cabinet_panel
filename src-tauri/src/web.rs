@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use std::net::{IpAddr, SocketAddr, UdpSocket};
+
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
+use axum::middleware::{self, Next};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -51,6 +54,28 @@ fn session_of(state: &AppState, headers: &HeaderMap) -> Option<(String, i64, Str
     Some((s.db_url.clone(), s.user_id, s.name.clone(), s.role.clone()))
 }
 
+/// Is this address the server laptop itself? (loopback, one of its own addresses, or listed in CABINET_DOCTOR_IPS.)
+/// The doctor account only works from such an address; reception laptops come from other addresses.
+fn is_server_machine(ip: IpAddr) -> bool {
+    if std::env::var("CABINET_DOCTOR_LOCAL_ONLY").map(|v| v == "0").unwrap_or(false) { return true; } // restriction switched off (Docker)
+    let ip = ip.to_canonical();
+    if ip.is_loopback() { return true; }
+    if std::env::var("CABINET_DOCTOR_IPS").unwrap_or_default().split(',').any(|a| a.trim().parse::<IpAddr>().map(|x| x == ip).unwrap_or(false)) { return true; }
+    // binding a socket to an address only works for the machine's own addresses
+    UdpSocket::bind(SocketAddr::new(ip, 0)).is_ok()
+}
+
+/// A doctor session is refused from any other laptop, even with a stolen cookie.
+async fn doctor_on_server_only(State(state): State<AppState>, ConnectInfo(peer): ConnectInfo<SocketAddr>, req: Request, next: Next) -> Response {
+    if !is_server_machine(peer.ip()) {
+        if let Some(tok) = cookie_token(req.headers()) {
+            let doctor = state.sessions.lock().unwrap_or_else(|e| e.into_inner()).get(&tok).map(|s| s.role == "doctor").unwrap_or(false);
+            if doctor { return err(StatusCode::UNAUTHORIZED, "Le compte docteur n'est utilisable que sur le poste du serveur."); }
+        }
+    }
+    next.run(req).await
+}
+
 fn user_json(id: i64, name: &str, role: &str) -> Value { json!({ "id": id, "name": name, "role": role }) }
 
 /// A code that belongs to a reception account created by the doctor (table `staff`).
@@ -64,7 +89,7 @@ async fn staff_login(state: &AppState, code: &str) -> Option<(i64, String, Strin
     Some((found.0, found.1, crate::get_dynamic_url(&entry.mysql_user, &entry.mysql_password, &state.db_host)))
 }
 
-async fn login(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
+async fn login(State(state): State<AppState>, ConnectInfo(peer): ConnectInfo<SocketAddr>, Json(body): Json<Value>) -> Response {
     let code = body.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
     if let Some((id, name, db_url)) = staff_login(&state, &code).await {
         let tok = match token() { Ok(t) => t, Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e) };
@@ -74,6 +99,12 @@ async fn login(State(state): State<AppState>, Json(body): Json<Value>) -> Respon
         return ([(header::SET_COOKIE, cookie)], Json(json!({ "user": user_json(id, &name, "reception") }))).into_response();
     }
     match crate::authenticate_user(code, Some(state.db_host.clone())).await {
+        // the doctor code is only accepted on the server laptop; elsewhere it looks exactly like a wrong code
+        Ok(res) if res.user.role == "doctor" && !is_server_machine(peer.ip()) => {
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            println!("Connexion docteur refusée depuis {} (réservée au poste du serveur)", peer.ip());
+            err(StatusCode::UNAUTHORIZED, "Code invalide ou utilisateur inactif")
+        }
         Ok(res) => {
             let tok = match token() { Ok(t) => t, Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e) };
             let (id, name, role) = (res.user.id.unwrap_or(0), res.user.name.clone(), res.user.role.clone());
@@ -371,6 +402,7 @@ pub async fn serve() -> Result<(), String> {
         .fallback_service(ServeDir::new(&web).fallback(ServeFile::new(web.join("index.html"))))
         // always re-check the page after an update, so no laptop keeps running an old version
         .layer(SetResponseHeaderLayer::if_not_present(header::CACHE_CONTROL, header::HeaderValue::from_static("no-cache")))
+        .layer(middleware::from_fn_with_state(state.clone(), doctor_on_server_only))
         .with_state(state);
 
     let port: u16 = std::env::var("CABINET_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
@@ -378,5 +410,5 @@ pub async fn serve() -> Result<(), String> {
         .map_err(|e| format!("Port {} indisponible: {}", port, e))?;
     println!("Cabinet — serveur web prêt sur le port {} (dossier: {})", port, web.display());
     println!("Ouvrez  http://<adresse de ce poste>:{}  dans Chrome.", port);
-    axum::serve(listener, app).await.map_err(|e| e.to_string())
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await.map_err(|e| e.to_string())
 }

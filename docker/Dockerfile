@@ -27,6 +27,7 @@ ENV CABINET_WEB_DIR=/app/dist \
     CABINET_BACKUP_DIR=/backups \
     CABINET_DB_HOST=mysql \
     CABINET_PORT=8080 \
+    CABINET_DOCTOR_LOCAL_ONLY=0 \
     TZ=Africa/Casablanca
 EXPOSE 8080
 CMD ["/app/cabinet_web"]
