@@ -14,6 +14,7 @@ import AppointmentForm from '../components/AppointmentForm';
 import Odontogram from '../components/Odontogram';
 import CnssEditor from '../components/cnss/CnssEditor';
 import ToothPanel from '../components/ToothPanel';
+import Radiology from '../components/Radiology';
 import Designation from '../components/ui/Designation';
 import { METHODS, STATUS_BADGE, STATUS_LABEL } from '../constants';
 import { useData } from '../contexts/DataContext';
@@ -22,13 +23,13 @@ import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
 import { useLoader } from '../hooks/useLoader';
 import {
-  Treatment, TreatmentPayment, cnssSheets, errorMessage, getSettings, patientTreatments, removeCnssSheet, removePatient, removePayment, removeTreatment, toothMarks, treatmentPayments,
+  Treatment, TreatmentPayment, cnssSheets, errorMessage, patientFilesList, getSettings, patientTreatments, removeCnssSheet, removePatient, removePayment, removeTreatment, toothMarks, treatmentPayments,
 } from '../services/api';
 import { STATUS, STATUS_ORDER, computeToothStates } from '../teeth';
 import { CnssData, SavedSheet, Settings, totalOf } from '../cnss/model';
 import { ageOf, fmtDate, fmtTime, fullName, money } from '../utils/format';
 
-type Tab = 'actes' | 'dents' | 'cnss' | 'dossier' | 'rdv';
+type Tab = 'actes' | 'dents' | 'radio' | 'cnss' | 'dossier' | 'rdv';
 type Dialog =
   | { kind: 'edit-patient' } | { kind: 'new-act'; tooth?: string } | { kind: 'edit-act'; t: Treatment } | { kind: 'pay'; t: Treatment }
   | { kind: 'new-appt' } | { kind: 'delete-act'; t: Treatment } | { kind: 'delete-payment'; p: TreatmentPayment; t: Treatment }
@@ -54,6 +55,7 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
   const lines = ledger.data ?? [];
   const marks = useLoader(() => toothMarks(patientId), [patientId, version]);
   const toothStates = useMemo(() => computeToothStates(lines, marks.data ?? []), [lines, marks.data]);
+  const rxFiles = useLoader(() => patientFilesList(patientId), [patientId, version]);
   const sheetRows = useLoader(() => cnssSheets(patientId), [patientId, version]);
   const settingsLoader = useLoader(() => getSettings(), [version]);
   const savedSheets: SavedSheet[] = useMemo(() => (sheetRows.data ?? []).flatMap((r) => {
@@ -146,7 +148,7 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
       </section>
 
       <div className="tabs" role="tablist">
-        {([['actes', 'Actes et paiements', lines.length], ['dents', 'Schéma dentaire', 0], ['cnss', 'Feuilles CNSS', savedSheets.length], ['dossier', 'Dossier clinique', 0], ['rdv', 'Rendez-vous', myAppointments.length]] as const).map(([id, label, count]) => (
+        {([['actes', 'Actes et paiements', lines.length], ['dents', 'Schéma dentaire', 0], ['radio', 'Radiologie', (rxFiles.data ?? []).length], ['cnss', 'Feuilles CNSS', savedSheets.length], ['dossier', 'Dossier clinique', 0], ['rdv', 'Rendez-vous', myAppointments.length]] as const).map(([id, label, count]) => (
           <button key={id} role="tab" className="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
             {label}{count > 0 && <span className="count">{count}</span>}
           </button>
@@ -251,6 +253,11 @@ const PatientFile = ({ patientId }: { patientId: number }) => {
               <aside className="card tooth-panel"><EmptyState icon={<ClipboardList />} title="Choisissez une dent" text="Son état, ses actes et sa remarque s'affichent ici." /></aside>
             )}
           </div>
+        )}
+
+        {tab === 'radio' && (
+          rxFiles.error ? <div className="alert alert-bad">{rxFiles.error}</div>
+            : <Radiology patientId={patientId} files={rxFiles.data ?? []} canRemove={isDoctor} onChanged={rxFiles.reload} />
         )}
 
         {tab === 'cnss' && (

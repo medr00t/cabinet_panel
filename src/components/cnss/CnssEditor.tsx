@@ -4,7 +4,7 @@ import { FileCheck2, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
 import CnssPage from './CnssPage';
 import Field from '../ui/Field';
 import DateField from '../ui/DateField';
-import { CnssAct, CnssData, SavedSheet, Settings, careOf, emptyAct, actFromTreatment, newSheet, totalOf } from '../../cnss/model';
+import { CnssAct, CnssData, DEFAULT_INP, SavedSheet, Settings, careOf, emptyAct, actFromTreatment, newSheet, totalOf } from '../../cnss/model';
 import { MAX_ACT_LINES } from '../../cnss/layout';
 import { useToast } from '../../contexts/ToastContext';
 import { Patient, Treatment, errorMessage, openPdf, saveCnssSheet, setSetting } from '../../services/api';
@@ -109,7 +109,7 @@ const CnssEditor = ({ patient, treatments, sheets, editing, settings, userId, on
         label: `Feuille du ${fmtDate(data.dateDentist) || fmtDate(new Date().toISOString().slice(0, 10))}`,
       });
       // clinic-wide values are remembered for the next sheets
-      if (data.inp.trim() && data.inp.trim() !== (settings.cnssInp ?? '')) await setSetting('cnss_inp', data.inp);
+      if (data.inp.trim() && data.inp.trim() !== (settings.cnssInp || DEFAULT_INP)) await setSetting('cnss_inp', data.inp);
       if (data.placeDentist.trim() && data.placeDentist.trim() !== (settings.cnssCity ?? '')) await setSetting('cnss_city', data.placeDentist);
       toast.success('Feuille CNSS enregistrée', 'Elle est dans le dossier du patient.');
       onSaved();

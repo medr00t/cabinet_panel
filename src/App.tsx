@@ -36,15 +36,17 @@ const Shell = () => {
   const [backupOpen, setBackupOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Excel backup on the doctor's machine: automatically after each login, and on demand.
+  // Backup on the server (Excel + SQL). The automatic one runs silently, at most once a day (the server skips it
+  // when today's is done) and only for the doctor; the button always runs and says what it did.
   const backup = async (automatic: boolean) => {
     setBackingUp(true);
     try {
       const r = await exportBackup(!automatic);
-      toast.success(automatic ? 'Sauvegarde Excel du mois mise à jour' : 'Sauvegarde Excel complète terminée',
-        `${r.newPatients} nouveau${r.newPatients > 1 ? 'x' : ''} patient${r.newPatients > 1 ? 's' : ''} ce mois, ${r.treatments} actes → ${r.path}`);
+      if (!automatic) {
+        toast.success('Sauvegarde terminée', `Excel et SQL enregistrés sur le serveur (${r.treatments} actes, ${r.patients} patients).`);
+      }
     } catch (e) {
-      toast.error('Sauvegarde Excel impossible', errorMessage(e));
+      toast.error('Sauvegarde impossible', errorMessage(e));
     } finally {
       setBackingUp(false);
     }

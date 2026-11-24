@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
 
-use crate::{access, backup, cnss, config, dbserver, ledger};
+use crate::{access, backup, cnss, config, dbserver, files, ledger};
 
 const COOKIE: &str = "cabinet_session";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 3600);
@@ -161,6 +161,8 @@ async fn dispatch(state: &AppState, cmd: &str, a: &Value, db: String, uid: i64) 
         "list_staff" => out(access::list_staff(db).await),
         "add_staff" => out(access::add_staff(arg(a, "name")?, arg(a, "code")?, db).await),
         "remove_staff" => out(access::remove_staff(arg(a, "id")?, db).await),
+        "get_patient_files" => { let pid = arg_i64(a, "patientId")?; out(blocking(move || files::list(&db, pid)).await) }
+        "remove_patient_file" => { let id = arg_i64(a, "id")?; out(blocking(move || files::remove(&db, id)).await) }
         "get_reception_code" => out(access::get_reception_code(db).await),
         "set_reception_code" => out(access::set_reception_code(arg(a, "code")?, db).await),
         "change_doctor_login" => out(access::change_doctor_login(arg(a, "currentCode")?, arg(a, "newCode")?, arg(a, "newAnswer")?, db).await),
@@ -169,6 +171,40 @@ async fn dispatch(state: &AppState, cmd: &str, a: &Value, db: String, uid: i64) 
         "export_backup" => out(backup::export_backup_in(state.documents.clone(), db, arg(a, "full")?).await),
         "restore_backup" => out(backup::restore_backup_in(state.documents.clone(), db, arg(a, "file")?).await),
         _ => Err(format!("Commande inconnue: {}", cmd)),
+    }
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
+}
+
+fn arg_i64(a: &Value, key: &str) -> Result<i64, String> { arg::<i64>(a, key) }
+
+/// Attaches an image or PDF to a patient's file. The body is the raw file; name/title/date come in the query string.
+async fn upload_patient_file(State(state): State<AppState>, headers: HeaderMap, Path(patient_id): Path<i64>,
+                             Query(q): Query<HashMap<String, String>>, body: axum::body::Bytes) -> Response {
+    let Some((db, uid, ..)) = session_of(&state, &headers) else { return err(StatusCode::UNAUTHORIZED, "Session expirée. Veuillez vous reconnecter."); };
+    let get = |k: &str| q.get(k).cloned().unwrap_or_default();
+    let (title, name, taken) = (get("title"), get("name"), get("taken_on"));
+    match blocking(move || files::add(&db, uid, patient_id, &title, &name, &taken, &body)).await {
+        Ok(id) => Json(json!({ "id": id })).into_response(),
+        Err(e) => err(StatusCode::BAD_REQUEST, &e),
+    }
+}
+
+/// Shows one attached file (any logged-in user).
+async fn show_patient_file(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<i64>) -> Response {
+    let Some((db, ..)) = session_of(&state, &headers) else { return err(StatusCode::UNAUTHORIZED, "Session expirée. Veuillez vous reconnecter."); };
+    let found = blocking(move || files::locate(&db, id)).await;
+    let (path, mime, name) = match found { Ok(f) => f, Err(e) => return err(StatusCode::NOT_FOUND, &e) };
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => ([
+            (header::CONTENT_TYPE, mime),
+            (header::CONTENT_DISPOSITION, format!("inline; filename=\"{}\"", name.replace('"', "'"))),
+            (header::CACHE_CONTROL, "private, max-age=3600".to_string()),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+        ], bytes).into_response(),
+        Err(_) => err(StatusCode::NOT_FOUND, "Le fichier n'est plus sur le serveur"),
     }
 }
 
@@ -330,6 +366,8 @@ pub async fn serve() -> Result<(), String> {
         .route("/api/me", get(me))
         .route("/api/call/{cmd}", post(call))
         .route("/api/backup/{file}", get(download_backup))
+        .route("/api/patient-files/{patient_id}", post(upload_patient_file).layer(DefaultBodyLimit::max(files::MAX_BYTES + 1024)))
+        .route("/api/patient-file/{id}", get(show_patient_file))
         .fallback_service(ServeDir::new(&web).fallback(ServeFile::new(web.join("index.html"))))
         // always re-check the page after an update, so no laptop keeps running an old version
         .layer(SetResponseHeaderLayer::if_not_present(header::CACHE_CONTROL, header::HeaderValue::from_static("no-cache")))

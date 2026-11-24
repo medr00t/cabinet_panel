@@ -6,6 +6,7 @@ import RefreshButton from '../components/ui/RefreshButton';
 import Avatar from '../components/ui/Avatar';
 import EmptyState from '../components/ui/EmptyState';
 import PatientForm from '../components/PatientForm';
+import PatientSearch from '../components/PatientSearch';
 import AppointmentForm from '../components/AppointmentForm';
 import { STATUS_BADGE, STATUS_LABEL } from '../constants';
 import { useData } from '../contexts/DataContext';
@@ -52,6 +53,8 @@ const Dashboard = () => {
           <button className="btn" onClick={() => setCreating('patient')}><UserPlus /> Nouveau patient</button>
         </div>
       </div>
+
+      <PatientSearch patients={patients} typeAnywhere={creating === null} onPick={(p) => go({ page: 'patient', patientId: p.id! })} />
 
       <div className="kpis">
         <div className="card kpi">

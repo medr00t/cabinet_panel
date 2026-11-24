@@ -124,6 +124,10 @@ pub struct BackupResult {
     pub payments: usize,
     pub appointments: usize,
     pub tooth_marks: usize,
+    /// the SQL dump written next to the workbooks
+    pub sql_path: String,
+    /// automatic backup that was skipped because today's is already done
+    pub skipped: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -453,8 +457,51 @@ fn write_month(conn: &mut PooledConn, dir: &Path, month: &str, today: NaiveDate,
     Ok((path, MonthStats { new_patients: new_rows.len(), treatments: n_acts, payments: n_pays, appointments: n_appts }))
 }
 
+const DUMP_TABLES: &[&str] = &["patients", "appointments", "payments", "treatments", "tooth_marks", "cnss_sheets", "settings", "staff", "patient_files"];
+const DUMP_FILE: &str = "cabinet_dump.sql";
+
+/// The whole database as one SQL file (schema + INSERTs), restorable with `mysql cabinet < file` on an empty database.
+/// One rolling file (overwritten) plus one snapshot per month, so the folder does not fill up.
+fn write_sql_dump(conn: &mut PooledConn, dir: &Path) -> Result<PathBuf, String> {
+    let mut out = String::new();
+    out.push_str(&format!("-- Sauvegarde SQL du cabinet, {}\n-- A restaurer sur une base VIDE : mysql -uroot -p < ce_fichier.sql\nSET NAMES utf8mb4;\n\n", Local::now().format("%d/%m/%Y %H:%M")));
+    out.push_str(SCHEMA);
+    out.push_str("\n\nSET FOREIGN_KEY_CHECKS=0;\n");
+    for table in DUMP_TABLES {
+        let rows: Vec<Row> = match conn.query(format!("SELECT * FROM `{}`", table)) { Ok(r) => r, Err(_) => continue }; // table absent on an older database
+        if rows.is_empty() { continue; }
+        let cols: Vec<String> = rows[0].columns_ref().iter().map(|c| format!("`{}`", c.name_str())).collect();
+        for chunk in rows.chunks(100) {
+            let values: Vec<String> = chunk.iter().map(|r| {
+                let vals: Vec<String> = r.clone().unwrap().iter().map(|v| v.as_sql(false)).collect();
+                format!("({})", vals.join(", "))
+            }).collect();
+            out.push_str(&format!("INSERT INTO `{}` ({}) VALUES\n{};\n", table, cols.join(", "), values.join(",\n")));
+        }
+    }
+    out.push_str("SET FOREIGN_KEY_CHECKS=1;\n");
+    std::fs::create_dir_all(dir).map_err(|e| format!("Dossier de sauvegarde: {}", e))?;
+    let path = dir.join(DUMP_FILE);
+    let tmp = dir.join(format!("{}.tmp", DUMP_FILE));
+    std::fs::write(&tmp, &out).map_err(|e| format!("Écriture de la sauvegarde SQL: {}", e))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("Écriture de la sauvegarde SQL: {}", e))?;
+    let monthly = dir.join(format!("cabinet_dump_{}.sql", Local::now().format("%Y-%m")));
+    if !monthly.exists() { let _ = std::fs::copy(&path, &monthly); }
+    Ok(path)
+}
+
+fn dump_is_from_today(dir: &Path) -> bool {
+    std::fs::metadata(dir.join(DUMP_FILE)).and_then(|m| m.modified()).ok()
+        .map(|t| chrono::DateTime::<Local>::from(t).date_naive() == Local::now().date_naive()).unwrap_or(false)
+}
+
 /// Reads the database and writes the monthly workbooks to `dir`.
 pub fn write_backup(dir: &Path, db_url: &str, staff: &[(i64, String)], mode: BackupMode) -> Result<BackupResult, String> {
+    // the automatic backup runs at most once a day (the first doctor login); the button always runs
+    if mode == BackupMode::Auto && dump_is_from_today(dir) {
+        return Ok(BackupResult { path: String::new(), files: 0, patients: 0, new_patients: 0, treatments: 0, payments: 0, appointments: 0, tooth_marks: 0,
+            sql_path: dir.join(DUMP_FILE).display().to_string(), skipped: true });
+    }
     let pool = Pool::new(db_url).map_err(|e| format!("Connexion à la base de données: {}", e))?;
     let mut conn = pool.get_conn().map_err(|e| format!("Connexion à la base de données: {}", e))?;
     let today = Local::now().date_naive();
@@ -479,7 +526,9 @@ pub fn write_backup(dir: &Path, db_url: &str, staff: &[(i64, String)], mode: Bac
         if *month == current { now = Some((path, stats)); }
     }
     let (path, stats) = now.ok_or_else(|| "Sauvegarde du mois en cours impossible".to_string())?;
+    let sql = write_sql_dump(&mut conn, dir)?;
     Ok(BackupResult {
+        sql_path: sql.display().to_string(), skipped: false,
         path: path.display().to_string(), files: written, patients: global.patients.len(), new_patients: stats.new_patients,
         treatments: stats.treatments, payments: stats.payments, appointments: stats.appointments, tooth_marks: global.marks.len(),
     })
@@ -647,7 +696,7 @@ pub struct BackupList { pub dir: String, pub files: Vec<BackupFile> }
 pub fn list_backup_files(dir: &Path) -> Vec<BackupFile> {
     let mut files: Vec<BackupFile> = std::fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|e| {
         let name = e.file_name().to_string_lossy().to_string();
-        if !(name.starts_with("cabinet_") && name.ends_with(".xlsx")) { return None; }
+        if !(name.starts_with("cabinet_") && (name.ends_with(".xlsx") || name.ends_with(".sql"))) { return None; }
         let meta = e.metadata().ok()?;
         let modified = meta.modified().ok().map(|t| chrono::DateTime::<Local>::from(t).format("%d/%m/%Y %H:%M").to_string()).unwrap_or_default();
         Some(BackupFile { name, size: meta.len(), modified })
@@ -658,7 +707,7 @@ pub fn list_backup_files(dir: &Path) -> Vec<BackupFile> {
 
 /// A backup file name chosen in the app: a plain file name inside the backup folder, nothing else.
 pub fn backup_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
-    if file.contains('/') || file.contains('\\') || file.contains("..") || !file.starts_with("cabinet_") || !file.ends_with(".xlsx") {
+    if file.contains('/') || file.contains('\\') || file.contains("..") || !file.starts_with("cabinet_") || !(file.ends_with(".xlsx") || file.ends_with(".sql")) {
         return Err("Nom de fichier de sauvegarde invalide".to_string());
     }
     let path = dir.join(file);
@@ -687,6 +736,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db_url: String, file: String)
 
 pub async fn restore_backup_in(documents: Option<PathBuf>, db_url: String, file: String) -> Result<RestoreResult, String> {
     require_doctor(&db_url)?;
+    if !file.ends_with(".xlsx") { return Err("La restauration se fait depuis un fichier Excel (les fichiers .sql se restaurent avec MySQL)".to_string()); }
     let path = backup_path(&backup_dir(documents), &file)?;
     tokio::task::spawn_blocking(move || {
         let mut conn = Conn::new(db_url.as_str()).map_err(|e| format!("Connexion à la base de données: {}", e))?;

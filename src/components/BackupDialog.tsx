@@ -35,8 +35,8 @@ const BackupDialog = ({ onClose }: { onClose: () => void }) => {
         footer={<button className="btn btn-secondary" onClick={onClose}>Fermer</button>}>
         <div className="stack">
           <div className="alert" style={{ background: 'var(--brand-50)', borderColor: 'var(--brand-200)', color: 'var(--brand-700)' }}>
-            Une sauvegarde est faite automatiquement à chaque connexion du docteur : un fichier par mois, une feuille par jour.
-            Chaque fichier contient aussi toutes les données brutes (feuilles grises <b>data_…</b>), ce qui permet de reconstruire la base si elle est perdue.
+            Une sauvegarde est faite automatiquement à la première connexion du docteur de chaque jour, sans message : un fichier Excel par mois (une feuille par jour) et un fichier SQL (<b>cabinet_dump.sql</b>, remplacé chaque jour, plus une copie par mois).
+            Les fichiers Excel permettent de reconstruire la base ici (bouton Restaurer). Les images de radiologie ne sont pas dans ces fichiers : elles sont dans le dossier <b>radiologie</b> du serveur, à copier aussi.
           </div>
           <div className="row-between">
             <span className="muted" style={{ fontSize: 13 }}>Dossier sur le serveur : <b>{files.data?.dir ?? '…'}</b></span>
@@ -56,7 +56,7 @@ const BackupDialog = ({ onClose }: { onClose: () => void }) => {
                             <td style={{ fontWeight: 600 }}><FileSpreadsheet size={15} style={{ verticalAlign: -3, marginRight: 8, color: 'var(--ok)' }} />{f.name}</td>
                             <td className="num">{f.modified}</td>
                             <td className="r num">{size(f.size)}</td>
-                            <td className="r"><a className="btn btn-secondary btn-sm" href={backupDownloadUrl(f.name)} download style={{ marginRight: 8 }}><Download /> Télécharger</a><button className="btn btn-secondary btn-sm" onClick={() => setRestoring(f)}><RotateCcw /> Restaurer</button></td>
+                            <td className="r"><a className="btn btn-secondary btn-sm" href={backupDownloadUrl(f.name)} download style={{ marginRight: 8 }}><Download /> Télécharger</a>{f.name.endsWith('.xlsx') && <button className="btn btn-secondary btn-sm" onClick={() => setRestoring(f)}><RotateCcw /> Restaurer</button>}</td>
                           </tr>
                         ))}
                       </tbody>

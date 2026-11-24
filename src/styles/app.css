@@ -191,3 +191,45 @@ dl.facts dd { margin: 0; font-weight: 550; }
 .login-foot .view-controls { justify-content: center; margin: 14px 0 0; }
 @media print { .view-controls { display: none !important; } }
 .sidebar-foot .view-controls { margin-bottom: 2px; }
+
+/* dashboard patient search */
+.psearch { position: relative; margin-bottom: 18px; z-index: 5; }
+.psearch-box { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--text-3); }
+.psearch-box:focus-within { border-color: var(--brand-500, #2563a6); box-shadow: 0 0 0 3px rgba(37, 99, 166, .15); }
+.psearch-input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+.psearch-clear { display: inline-flex; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 4px; border-radius: 6px; }
+.psearch-list { position: absolute; left: 0; right: 0; top: calc(100% + 6px); max-height: 420px; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.psearch-list .list-row.on { background: var(--brand-50, rgba(37, 99, 166, .08)); }
+.psearch-empty { padding: 16px; color: var(--text-3); font-size: 14px; }
+@media print { .psearch { display: none !important; } }
+
+/* radiology */
+.rx-form { display: grid; grid-template-columns: 1fr 200px; gap: 14px; }
+.rx-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px; text-align: center; border: 2px dashed var(--line-strong); border-radius: 12px; color: var(--text-2); }
+.rx-drop.over { border-color: var(--brand-500, #2563a6); background: var(--brand-50, rgba(37, 99, 166, .06)); }
+.rx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.rx-tile { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.rx-thumb { display: block; width: 100%; aspect-ratio: 4 / 3; border: 0; padding: 0; background: #0b1220; cursor: zoom-in; }
+.rx-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rx-pdf-ico { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; color: #9fb3cc; font-weight: 700; }
+.rx-meta { display: grid; gap: 2px; padding: 8px 10px; font-size: 12.5px; }
+.rx-meta b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rx-meta span { color: var(--text-3); }
+.rx-del { position: absolute; top: 6px; right: 6px; display: inline-flex; padding: 6px; border: 0; border-radius: 8px; background: rgba(0, 0, 0, .55); color: #fff; cursor: pointer; }
+.rx-del:hover { background: rgba(190, 30, 30, .9); }
+.rx-viewer { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; background: #050a14; color: #fff; }
+.rx-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; }
+.rx-title { display: grid; gap: 2px; min-width: 0; }
+.rx-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rx-title span { font-size: 12px; color: #9fb3cc; }
+.rx-tools { display: flex; align-items: center; gap: 6px; }
+.rx-tools button, .rx-link { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .25); border-radius: 9px; background: transparent; color: #fff; cursor: pointer; font: inherit; font-size: 13px; text-decoration: none; }
+.rx-tools button:hover, .rx-link:hover { background: rgba(255, 255, 255, .14); }
+.rx-tools .lvl { min-width: 64px; justify-content: center; }
+.rx-stage { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; }
+.rx-stage img { max-width: 100%; max-height: 100%; transform-origin: center; transition: transform .08s; user-select: none; }
+.rx-pdf { width: min(1000px, 100%); height: 100%; border: 0; background: #fff; }
+.rx-nav { position: absolute; top: 50%; transform: translateY(-50%); display: inline-flex; padding: 12px 8px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, .14); color: #fff; cursor: pointer; }
+.rx-nav.left { left: 12px; } .rx-nav.right { right: 12px; }
+@media (max-width: 700px) { .rx-form { grid-template-columns: 1fr; } }
+@media print { .rx-viewer { display: none !important; } }

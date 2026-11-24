@@ -46,6 +46,9 @@ export interface CnssData {
   hidden?: string[];
 }
 
+/** The dentist's INP number, used until another one is saved. */
+export const DEFAULT_INP = '034216192';
+
 export interface Settings { cnssInp?: string; cnssCity?: string; dentistName?: string }
 
 export interface SavedSheet { id: number; label: string; createdAt?: string; updatedAt?: string; data: CnssData }
@@ -115,7 +118,7 @@ export const newSheet = ({ patient, treatments, settings, previous, alreadyBille
     dob: patient.dateOfBirth ?? '',
     beneficiaryCin: previous?.beneficiaryCin ?? '',
     sex: patient.gender === 'female' ? 'F' : patient.gender === 'male' ? 'M' : '',
-    inp: settings.cnssInp ?? '',
+    inp: settings.cnssInp || DEFAULT_INP,
     careSoins: false, careProthese: false, careOrtho: false, careAutres: false,
     priorAgreement: '', accidentDate: '',
     placeInsured: city, dateInsured: today(), placeDentist: city, dateDentist: today(),

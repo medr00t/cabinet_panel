@@ -3,6 +3,7 @@ mod backup;
 mod cnss;
 mod config;
 mod dbserver;
+pub mod files;
 mod ledger;
 #[cfg(feature = "desktop")]
 mod onboarding;

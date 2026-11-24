@@ -211,6 +211,27 @@ export const patientBalances = () => call<Balance[]>('get_patient_balances');
 export const toothMarks = (patientId: number) => call<ToothMark[]>('get_tooth_marks', { patientId });
 export const saveToothMark = (mark: ToothMark) => call<void>('set_tooth_mark', { mark });
 
+// ------------------------------------------------------------------ radiology images and documents
+
+export interface PatientFileRow { id: number; patientId: number; title: string; originalName: string; mime: string; sizeBytes: number; takenOn?: string; createdBy: number; createdAt: string }
+export const patientFilesList = (patientId: number) => call<PatientFileRow[]>('get_patient_files', { patientId });
+/** The doctor removes a file from the dossier; it is only hidden, never erased from the server. */
+export const removePatientFile = (id: number) => call<void>('remove_patient_file', { id });
+export const patientFileUrl = (id: number) => `/api/patient-file/${id}`;
+export async function uploadPatientFile(patientId: number, file: File, title: string, takenOn: string): Promise<number> {
+  const query = new URLSearchParams({ name: file.name, title, taken_on: takenOn });
+  let res: Response;
+  try {
+    res = await fetch(`/api/patient-files/${patientId}?${query}`, { method: 'POST', body: file, credentials: 'same-origin' });
+  } catch {
+    throw new Error('Connexion au serveur perdue. Vérifiez que le poste du serveur est allumé.');
+  }
+  const data = await res.json().catch(() => ({})) as { id?: number; error?: string };
+  if (res.status === 401) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  if (!res.ok) throw new Error(data.error || (res.status === 413 ? 'Fichier trop volumineux (30 Mo au plus)' : `Erreur du serveur (${res.status})`));
+  return data.id ?? 0;
+}
+
 // ------------------------------------------------------------------ CNSS sheets and clinic settings
 
 export interface CnssSheetRow { id?: number; patientId: number; label: string; data: string; createdBy: number; createdAt?: string; updatedAt?: string }
@@ -223,7 +244,7 @@ export const setSetting = (name: 'cnss_inp' | 'cnss_city' | 'dentist_name', valu
 
 // ------------------------------------------------------------------ Excel backup (doctor only)
 
-export interface BackupResult { path: string; files: number; patients: number; newPatients: number; treatments: number; payments: number; appointments: number; toothMarks: number }
+export interface BackupResult { skipped?: boolean; sqlPath?: string; path: string; files: number; patients: number; newPatients: number; treatments: number; payments: number; appointments: number; toothMarks: number }
 export interface BackupFile { name: string; size: number; modified: string }
 export interface BackupList { dir: string; files: BackupFile[] }
 export interface RestoreResult { patients: number; appointments: number; treatments: number; payments: number; toothMarks: number; cnssSheets: number; settings: number }

@@ -86,3 +86,6 @@ pub fn staff_names() -> Vec<(i64, String)> {
     v.extend(EXTRA_STAFF.read().unwrap().iter().cloned());
     v
 }
+
+/// The folder holding the config file (also where attached files are kept by default).
+pub fn dir() -> Option<PathBuf> { CONFIG_DIR.read().unwrap().clone() }
