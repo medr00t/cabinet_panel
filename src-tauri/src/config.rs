@@ -74,3 +74,15 @@ pub fn save_active(config: &AppConfig) -> Result<(), String> {
     let dir = CONFIG_DIR.read().unwrap().clone().ok_or_else(|| "Configuration non chargée".to_string())?;
     save(&dir, config)
 }
+
+// Names of the reception accounts the doctor created (table `staff`), so payments and backups can show who collected.
+static EXTRA_STAFF: RwLock<Vec<(i64, String)>> = RwLock::new(Vec::new());
+
+pub fn set_extra_staff(v: Vec<(i64, String)>) { *EXTRA_STAFF.write().unwrap() = v; }
+
+/// (id, name) of every account: the ones of the config file plus the staff table.
+pub fn staff_names() -> Vec<(i64, String)> {
+    let mut v: Vec<(i64, String)> = get().map(|c| c.users.iter().map(|u| (u.id, u.name.clone())).collect()).unwrap_or_default();
+    v.extend(EXTRA_STAFF.read().unwrap().iter().cloned());
+    v
+}

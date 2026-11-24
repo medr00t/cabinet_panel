@@ -53,8 +53,26 @@ fn session_of(state: &AppState, headers: &HeaderMap) -> Option<(String, i64, Str
 
 fn user_json(id: i64, name: &str, role: &str) -> Value { json!({ "id": id, "name": name, "role": role }) }
 
+/// A code that belongs to a reception account created by the doctor (table `staff`).
+async fn staff_login(state: &AppState, code: &str) -> Option<(i64, String, String)> {
+    let cfg = config::get().ok()?;
+    let entry = cfg.users.iter().find(|u| u.role == "reception")?.clone();
+    let url = crate::get_dynamic_url(&entry.mysql_user, &entry.mysql_password, &state.db_host);
+    let (u, c) = (url.clone(), code.to_string());
+    let found = tokio::task::spawn_blocking(move || access::find_staff_by_code(&u, &c)).await.ok()?.ok()??;
+    let _ = tokio::task::spawn_blocking(move || access::refresh_staff_names(&url)).await;
+    Some((found.0, found.1, crate::get_dynamic_url(&entry.mysql_user, &entry.mysql_password, &state.db_host)))
+}
+
 async fn login(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
     let code = body.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    if let Some((id, name, db_url)) = staff_login(&state, &code).await {
+        let tok = match token() { Ok(t) => t, Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e) };
+        state.sessions.lock().unwrap_or_else(|e| e.into_inner())
+            .insert(tok.clone(), Session { db_url, user_id: id, name: name.clone(), role: "reception".into(), last: Instant::now() });
+        let cookie = format!("{}={}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200", COOKIE, tok);
+        return ([(header::SET_COOKIE, cookie)], Json(json!({ "user": user_json(id, &name, "reception") }))).into_response();
+    }
     match crate::authenticate_user(code, Some(state.db_host.clone())).await {
         Ok(res) => {
             let tok = match token() { Ok(t) => t, Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e) };
@@ -140,6 +158,9 @@ async fn dispatch(state: &AppState, cmd: &str, a: &Value, db: String, uid: i64) 
         "get_settings" => out(cnss::get_settings(db).await),
         "set_setting" => out(cnss::set_setting(arg(a, "name")?, arg(a, "value")?, db).await),
 
+        "list_staff" => out(access::list_staff(db).await),
+        "add_staff" => out(access::add_staff(arg(a, "name")?, arg(a, "code")?, db).await),
+        "remove_staff" => out(access::remove_staff(arg(a, "id")?, db).await),
         "get_reception_code" => out(access::get_reception_code(db).await),
         "set_reception_code" => out(access::set_reception_code(arg(a, "code")?, db).await),
         "change_doctor_login" => out(access::change_doctor_login(arg(a, "currentCode")?, arg(a, "newCode")?, arg(a, "newAnswer")?, db).await),
@@ -204,6 +225,28 @@ fn bootstrap_config(dir: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+/// A config written by the old per-laptop wizard holds only ONE account. The web server serves everybody, so when the
+/// reception account is missing it is created here: a fresh database password for the existing 'reception' database
+/// account and a random code, until the doctor chooses the real reception code in "Codes de connexion".
+fn ensure_reception_account() -> Result<(), String> {
+    use mysql::prelude::*;
+    let cfg = config::get()?;
+    if cfg.users.iter().any(|u| u.role == "reception") || !dbserver::is_installed() { return Ok(()); }
+    let mut bytes = [0u8; 40];
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
+    const A: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    let password: String = bytes[..24].iter().map(|b| A[*b as usize % A.len()] as char).collect();
+    let code: String = bytes[24..28].iter().map(|b| char::from(b'0' + (b % 10))).collect();
+    let mut conn = mysql::Conn::new(dbserver::root_url()?.as_str()).map_err(|e| format!("Connexion root: {}", e))?;
+    conn.query_drop(format!("ALTER USER 'reception'@'%' IDENTIFIED BY '{}'", password)).map_err(|e| format!("Compte réception: {}", e))?;
+    conn.query_drop("FLUSH PRIVILEGES").map_err(|e| e.to_string())?;
+    let mut next = (*cfg).clone();
+    next.users.push(config::UserEntry { id: 2, name: "Réception".into(), code, role: "reception".into(), mysql_user: "reception".into(), mysql_password: password });
+    config::save_active(&next)?;
+    println!("Compte réception créé. Le docteur choisit son code dans « Codes de connexion ».");
+    Ok(())
+}
+
 /// Applies the SQL files of database/updates/ that were not applied yet (once each, in name order), so an update
 /// that changes the database needs nothing more than a restart. Waits for the database to come up.
 fn apply_updates(db_url: &str, dir: &std::path::Path) -> Result<Vec<String>, String> {
@@ -243,6 +286,16 @@ pub async fn serve() -> Result<(), String> {
         Ok(true) => println!("Base de données démarrée."),
         Ok(false) => {}
         Err(e) => eprintln!("Base de données: {}", e),
+    });
+    // (separate thread: waits for the database, then adds the reception account if the old config lacks it)
+    std::thread::spawn(|| {
+        for attempt in 1..=40 {
+            match ensure_reception_account() {
+                Ok(()) => return,
+                Err(e) if attempt < 40 => { if attempt == 1 { println!("Compte réception: en attente de la base ({})", e); } std::thread::sleep(Duration::from_secs(3)); }
+                Err(e) => eprintln!("Compte réception: {}", e),
+            }
+        }
     });
 
     // database updates shipped with a new version (Docker: /app/updates; elsewhere: database/updates next to the program)

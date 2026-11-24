@@ -238,6 +238,11 @@ export const exportBackup = (full = false) => call<BackupResult>('export_backup'
 /** The reception login code as stored in the database (null until reception has logged in once or the doctor sets one). */
 export const getReceptionCode = () => call<string | null>('get_reception_code');
 export const setReceptionCode = (code: string) => call<void>('set_reception_code', { code });
+/** Reception accounts created by the doctor; removing one only deactivates it (nothing is erased). */
+export interface StaffMember { id: number; name: string; code: string }
+export const listStaff = () => call<StaffMember[]>('list_staff');
+export const addStaff = (name: string, code: string) => call<number>('add_staff', { name, code });
+export const removeStaff = (id: number) => call<void>('remove_staff', { id });
 /** Changes the doctor's own code and/or security answer on this laptop; the current code is asked again. */
 export const changeDoctorLogin = (currentCode: string, newCode?: string, newAnswer?: string) =>
   call<void>('change_doctor_login', { currentCode, newCode: newCode || null, newAnswer: newAnswer || null });

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, UserPlus, UserX } from 'lucide-react';
 import Modal from './ui/Modal';
+import ConfirmDialog from './ui/ConfirmDialog';
 import { useToast } from '../contexts/ToastContext';
 import { useLoader } from '../hooks/useLoader';
-import { changeDoctorLogin, errorMessage, getReceptionCode, setReceptionCode } from '../services/api';
+import { StaffMember, addStaff, changeDoctorLogin, errorMessage, getReceptionCode, listStaff, removeStaff, setReceptionCode } from '../services/api';
 
 const digits = (v: string) => v.replace(/\D/g, '').slice(0, 4);
 
@@ -15,7 +16,23 @@ const SettingsDialog = ({ onClose }: { onClose: () => void }) => {
   const [newCode, setNewCode] = useState('');
   const [recCode, setRecCode] = useState('');
   const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState<'me' | 'rec' | null>(null);
+  const [busy, setBusy] = useState<'me' | 'rec' | 'staff' | null>(null);
+  const staff = useLoader(() => listStaff(), []);
+  const [staffName, setStaffName] = useState('');
+  const [staffCode, setStaffCode] = useState('');
+  const [removing, setRemoving] = useState<StaffMember | null>(null);
+
+  const createStaff = async () => {
+    setBusy('staff');
+    try {
+      await addStaff(staffName, staffCode);
+      toast.success('Compte créé', `${staffName.trim()} peut se connecter avec son code.`);
+      setStaffName(''); setStaffCode('');
+      await staff.reload();
+    } catch (e) {
+      toast.error('Création impossible', errorMessage(e));
+    } finally { setBusy(null); }
+  };
 
   const saveMine = async () => {
     setBusy('me');
@@ -69,7 +86,45 @@ const SettingsDialog = ({ onClose }: { onClose: () => void }) => {
           <div><button className="btn" onClick={saveReception} disabled={!/^\d{4}$/.test(recCode) || busy !== null}><KeyRound /> Changer le code de la réception</button></div>
           <span className="hint muted" style={{ fontSize: 12 }}>Le poste de la réception demandera ce nouveau code à sa prochaine connexion, sans rien à refaire sur son ordinateur.</span>
         </section>
+
+        <section className="stack" style={{ gap: 12 }}>
+          <b>Comptes de la réception</b>
+          <span className="hint muted" style={{ fontSize: 12 }}>Un compte par personne : chacun se connecte avec son propre code et son nom apparaît sur les paiements qu'il encaisse.</span>
+          {staff.error ? <div className="alert alert-bad">{staff.error}</div>
+            : staff.loading ? <span className="muted">…</span>
+              : (staff.data ?? []).length === 0 ? <span className="muted">Aucun compte pour l'instant.</span>
+                : (
+                  <div className="stack" style={{ gap: 6 }}>
+                    {(staff.data ?? []).map((m) => (
+                      <div key={m.id} className="row-between">
+                        <span><b>{m.name}</b> <span className="muted num">· code {m.code}</span></span>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRemoving(m)}><UserX /> Retirer</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+          <div className="field"><label htmlFor="st-sn">Nom</label>
+            <input id="st-sn" className="input" autoComplete="off" value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="ex. Nadia" /></div>
+          <div className="field"><label htmlFor="st-sc">Code (4 chiffres)</label>
+            <input id="st-sc" className="input" inputMode="numeric" autoComplete="off" value={staffCode} onChange={(e) => setStaffCode(digits(e.target.value))} /></div>
+          <div><button className="btn" onClick={createStaff} disabled={!staffName.trim() || !/^\d{4}$/.test(staffCode) || busy !== null}><UserPlus /> Créer le compte</button></div>
+        </section>
       </div>
+      {removing && (
+        <ConfirmDialog title="Retirer ce compte ?" confirmLabel="Retirer"
+          message={`« ${removing.name} » ne pourra plus se connecter. Le compte n'est pas effacé : ses paiements et son historique restent dans le cabinet.`}
+          onClose={() => setRemoving(null)}
+          onConfirm={async () => {
+            try {
+              await removeStaff(removing.id);
+              toast.success('Compte retiré', `${removing.name} ne peut plus se connecter.`);
+              await staff.reload();
+            } catch (e) {
+              toast.error('Impossible de retirer le compte', errorMessage(e));
+              throw e;
+            }
+          }} />
+      )}
     </Modal>
   );
 };

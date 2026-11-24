@@ -97,3 +97,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT,
     updated_at VARCHAR(19)
 );
+
+-- Reception accounts created by the doctor (removed = deleted_at set, never erased)
+CREATE TABLE IF NOT EXISTS staff (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(80) NOT NULL,
+    code VARCHAR(4) NOT NULL,
+    created_at DATETIME NOT NULL,
+    deleted_at DATETIME NULL,
+    INDEX (code)
+);

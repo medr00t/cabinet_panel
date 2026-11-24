@@ -593,8 +593,7 @@ async fn get_payments_by_date(date: String, db_url: String) -> Result<Vec<Paymen
 }
 
 fn staff_name(id: i64) -> String {
-    config::get().ok()
-        .and_then(|c| c.users.iter().find(|u| u.id == id).map(|u| u.name.clone()))
+    config::staff_names().into_iter().find(|(i, _)| *i == id).map(|(_, n)| n)
         .unwrap_or_else(|| format!("Utilisateur {}", id))
 }
 

@@ -517,7 +517,8 @@ pub async fn export_backup(app: tauri::AppHandle, db_url: String, full: Option<b
 pub async fn export_backup_in(documents: Option<PathBuf>, db_url: String, full: Option<bool>) -> Result<BackupResult, String> {
     let cfg = require_doctor(&db_url)?;
     let dir = backup_dir(documents);
-    let staff: Vec<(i64, String)> = cfg.users.iter().map(|u| (u.id, u.name.clone())).collect();
+    let _ = &cfg;
+    let staff: Vec<(i64, String)> = config::staff_names();
     let mode = if full.unwrap_or(false) { BackupMode::Full } else { BackupMode::Auto };
     tokio::task::spawn_blocking(move || write_backup(&dir, &db_url, &staff, mode))
         .await
