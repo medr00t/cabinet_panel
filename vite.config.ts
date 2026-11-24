@@ -17,6 +17,8 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     host: host || false,
+    // `npm run dev` talks to a cabinet_web server running on this machine (port 8080)
+    proxy: { '/api': 'http://localhost:8080' },
     hmr: host
       ? {
           protocol: "ws",

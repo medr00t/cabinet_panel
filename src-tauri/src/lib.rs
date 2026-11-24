@@ -6,6 +6,7 @@ mod dbserver;
 mod ledger;
 mod onboarding;
 mod printing;
+pub mod web;
 
 use serde::{Deserialize, Serialize};
 use mysql::*;

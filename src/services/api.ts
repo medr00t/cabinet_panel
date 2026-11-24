@@ -1,5 +1,3 @@
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-
 // ------------------------------------------------------------------ types
 
 export type Role = 'doctor' | 'reception';
@@ -69,15 +67,32 @@ export interface DailySummary {
 
 // ------------------------------------------------------------------ transport
 
-const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+// The app talks to the cabinet's web server (/api/...). `npm run dev:mock` uses an in-memory fake instead.
+const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_MOCK === '1';
+
+export const SESSION_EXPIRED_EVENT = 'cabinet:session-expired';
+
+async function post<T>(url: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}), credentials: 'same-origin' });
+  } catch {
+    throw new Error('Connexion au serveur perdue. Vérifiez que le poste du serveur est allumé.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401 && url !== '/api/login') window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    throw new Error((data as { error?: string }).error || `Erreur du serveur (${res.status})`);
+  }
+  return data as T;
+}
 
 async function rawInvoke<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
-  // Browser preview (npm run dev without Tauri): in-memory fake backend, stripped from production builds.
-  if (import.meta.env.DEV && !inTauri) {
+  if (USE_MOCK) {
     const { mockInvoke } = await import('../dev/mockBackend');
-    return mockInvoke(cmd, args) as Promise<T>;
+    return mockInvoke(cmd, { ...args, dbUrl: 'mock' }) as Promise<T>;
   }
-  return tauriInvoke<T>(cmd, args);
+  return post<T>(`/api/call/${cmd}`, args);
 }
 
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
@@ -100,91 +115,67 @@ function mapKeys(value: unknown, fn: (k: string) => string, dropNull: boolean): 
 export const errorMessage = (e: unknown): string =>
   e instanceof Error ? e.message : typeof e === 'string' ? e : 'Une erreur est survenue';
 
-// ------------------------------------------------------------------ session
+// ------------------------------------------------------------------ session (kept by the server, in a cookie)
 
-interface Session { user: User; dbUrl: string; code: string }
-let session: Session | null = null;
+let session: { user: User } | null = null;
 
-const HOST_KEY = 'serverHost';
-export const getServerHost = (): string => {
-  try { return localStorage.getItem(HOST_KEY) || 'localhost'; } catch { return 'localhost'; }
-};
-export const setServerHost = (host: string): void => {
-  try { localStorage.setItem(HOST_KEY, host.trim() || 'localhost'); } catch { /* not remembered */ }
-};
-
-interface AuthResult { user: { id: number; name: string; role: Role }; db_url: string }
+interface LoginResult { user: User }
 
 export async function login(code: string): Promise<User> {
-  const res = await rawInvoke<AuthResult>('authenticate_user', { code, host: getServerHost() });
-  const user: User = { id: res.user.id, name: res.user.name, role: res.user.role };
-  session = { user, dbUrl: res.db_url, code };
-  return user;
+  const res = USE_MOCK
+    ? await (async () => {
+      const { mockInvoke } = await import('../dev/mockBackend');
+      const r = await mockInvoke('authenticate_user', { code, host: 'localhost' }) as { user: User };
+      return { user: r.user } as LoginResult;
+    })()
+    : await post<LoginResult>('/api/login', { code });
+  session = { user: res.user };
+  return res.user;
 }
 
-export function logout(): void { session = null; }
-export const currentUser = (): User | null => session?.user ?? null;
-
-export async function discoverServer(): Promise<string | null> {
-  const found = await rawInvoke<string | null>('discover_server', { savedHost: getServerHost() });
-  if (found) setServerHost(found);
-  return found;
-}
-
-export const verifyDoctorAnswer = (answer: string): Promise<boolean> =>
-  rawInvoke<boolean>('verify_doctor_answer', { answer });
-
-// ------------------------------------------------------------------ first-run setup (no session)
-
-export interface SetupStatus { configExists: boolean; serverInstalled: boolean; serverRunning: boolean; portBusy: boolean; platform: string }
-export interface SetupInput { role: Role; passphrase: string; code: string; name?: string; answer?: string }
-export interface ServerInfo { version: string; port: number; address?: string }
-export interface ServerProgress { step: string; percent?: number | null; message: string }
-export interface FoundBackup { path: string; name: string; folder: string; size: number; modified: string; restorable: boolean }
-export interface ClientCheck { ok: boolean; host?: string; message: string }
-const plain = <T,>(v: unknown) => mapKeys(v, camel, true) as T;
-export const setupStatus = async () => plain<SetupStatus>(await rawInvoke('setup_status', {}));
-export const setupSaveConfig = (input: SetupInput, force = false) => rawInvoke<void>('setup_save_config', { input, force });
-export const serverInstall = async (passphrase: string) => plain<ServerInfo>(await rawInvoke('server_install', { passphrase }));
-export const serverStart = () => rawInvoke<boolean>('server_start', {});
-export const setupFindBackups = async () => plain<FoundBackup[]>(await rawInvoke('setup_find_backups', {}));
-export const setupRestore = async (path: string) => plain<RestoreResult>(await rawInvoke('setup_restore', { path }));
-export const clientCheck = async (passphrase: string, role: Role) => plain<ClientCheck>(await rawInvoke('client_check', { passphrase, role }));
-/** Progress lines sent by the Rust side while the database installs. */
-export async function onServerProgress(fn: (p: ServerProgress) => void): Promise<() => void> {
-  if (!inTauri) return () => {};
-  const { listen } = await import('@tauri-apps/api/event');
-  return listen<ServerProgress>('server-progress', (e) => fn(plain<ServerProgress>(e.payload)));
-}
-
-const CONNECTION_ERROR = /connect|connexion|timed? ?out|gone away|lost connection|broken pipe/i;
-
-// Calls a backend command with the session's db url; on a connection error, re-finds the server
-// (it may have a new IP), reconnects with the remembered code and retries once.
-async function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (!session) throw new Error('Session expirée. Veuillez vous reconnecter.');
-  // Tauri maps top-level argument names itself (camelCase); only payload objects need snake_case fields.
-  const payload = Object.fromEntries(
-    Object.entries(args).map(([k, v]) => [k, v !== null && typeof v === 'object' ? mapKeys(v, snake, false) : v]),
-  );
-  const send = (dbUrl: string) => rawInvoke<unknown>(cmd, { ...payload, dbUrl });
+/** After a page refresh: is the browser still logged in? */
+export async function restoreSession(): Promise<User | null> {
+  if (USE_MOCK) return null;
   try {
-    return mapKeys(await send(session.dbUrl), camel, true) as T;
-  } catch (first) {
-    if (!CONNECTION_ERROR.test(errorMessage(first))) throw new Error(errorMessage(first));
-    try {
-      await discoverServer().catch(() => null);
-      const res = await rawInvoke<AuthResult>('reconnect_database', { code: session.code, host: getServerHost() });
-      session = { ...session, dbUrl: res.db_url };
-      return mapKeys(await send(session.dbUrl), camel, true) as T;
-    } catch {
-      throw new Error('Connexion au serveur perdue. Vérifiez que le poste du docteur est allumé.');
-    }
+    const res = await fetch('/api/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const user = ((await res.json()) as LoginResult).user;
+    session = { user };
+    return user;
+  } catch {
+    return null;
   }
 }
 
-/** Saves a PDF (base64) to a temp folder and opens it in the system's PDF viewer / browser. */
-export const openPdf = (name: string, data: string) => rawInvoke<string>('open_pdf', { name, data });
+export function logout(): void {
+  session = null;
+  if (!USE_MOCK) void fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+}
+export const currentUser = (): User | null => session?.user ?? null;
+
+// Calls a backend command. The server knows the database from the session; payload objects use snake_case fields.
+async function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (!session) throw new Error('Session expirée. Veuillez vous reconnecter.');
+  const payload = Object.fromEntries(
+    Object.entries(args).map(([k, v]) => [k, v !== null && typeof v === 'object' ? mapKeys(v, snake, false) : v]),
+  );
+  return mapKeys(await rawInvoke<unknown>(cmd, payload), camel, true) as T;
+}
+
+/** Shows a generated PDF (base64) in a new browser tab, where it can be printed with Ctrl+P. */
+export async function openPdf(name: string, data: string): Promise<void> {
+  const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const win = window.open(url, '_blank');
+  if (!win) { // pop-up blocked: download it instead
+    const a = document.createElement('a');
+    a.href = url; a.download = `${name}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+}
+
+export const backupDownloadUrl = (name: string) => `/api/backup/${encodeURIComponent(name)}`;
 
 // ------------------------------------------------------------------ patients
 

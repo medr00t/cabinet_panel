@@ -510,8 +510,12 @@ pub fn require_doctor(db_url: &str) -> Result<std::sync::Arc<config::AppConfig>,
 #[tauri::command]
 pub async fn export_backup(app: tauri::AppHandle, db_url: String, full: Option<bool>) -> Result<BackupResult, String> {
     use tauri::Manager;
+    export_backup_in(app.path().document_dir().ok(), db_url, full).await
+}
+
+pub async fn export_backup_in(documents: Option<PathBuf>, db_url: String, full: Option<bool>) -> Result<BackupResult, String> {
     let cfg = require_doctor(&db_url)?;
-    let dir = backup_dir(app.path().document_dir().ok());
+    let dir = backup_dir(documents);
     let staff: Vec<(i64, String)> = cfg.users.iter().map(|u| (u.id, u.name.clone())).collect();
     let mode = if full.unwrap_or(false) { BackupMode::Full } else { BackupMode::Auto };
     tokio::task::spawn_blocking(move || write_backup(&dir, &db_url, &staff, mode))
@@ -651,7 +655,7 @@ pub fn list_backup_files(dir: &Path) -> Vec<BackupFile> {
 }
 
 /// A backup file name chosen in the app: a plain file name inside the backup folder, nothing else.
-fn backup_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
+pub fn backup_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
     if file.contains('/') || file.contains('\\') || file.contains("..") || !file.starts_with("cabinet_") || !file.ends_with(".xlsx") {
         return Err("Nom de fichier de sauvegarde invalide".to_string());
     }
@@ -662,16 +666,24 @@ fn backup_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn list_backups(app: tauri::AppHandle, db_url: String) -> Result<BackupList, String> {
     use tauri::Manager;
+    list_backups_in(app.path().document_dir().ok(), db_url).await
+}
+
+pub async fn list_backups_in(documents: Option<PathBuf>, db_url: String) -> Result<BackupList, String> {
     require_doctor(&db_url)?;
-    let dir = backup_dir(app.path().document_dir().ok());
+    let dir = backup_dir(documents);
     Ok(BackupList { files: list_backup_files(&dir), dir: dir.display().to_string() })
 }
 
 #[tauri::command]
 pub async fn restore_backup(app: tauri::AppHandle, db_url: String, file: String) -> Result<RestoreResult, String> {
     use tauri::Manager;
+    restore_backup_in(app.path().document_dir().ok(), db_url, file).await
+}
+
+pub async fn restore_backup_in(documents: Option<PathBuf>, db_url: String, file: String) -> Result<RestoreResult, String> {
     require_doctor(&db_url)?;
-    let path = backup_path(&backup_dir(app.path().document_dir().ok()), &file)?;
+    let path = backup_path(&backup_dir(documents), &file)?;
     tokio::task::spawn_blocking(move || {
         let mut conn = Conn::new(db_url.as_str()).map_err(|e| format!("Connexion à la base de données: {}", e))?;
         restore_from_workbook(&mut conn, &path)

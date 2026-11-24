@@ -5,13 +5,12 @@ import { DataProvider, useData } from './contexts/DataContext';
 import { NavProvider, Route, useNav } from './contexts/NavContext';
 import { useUser } from './contexts/UserContext';
 import { useToast } from './contexts/ToastContext';
-import { errorMessage, exportBackup, getServerHost } from './services/api';
+import { errorMessage, exportBackup } from './services/api';
 import { today } from './utils/format';
 import BackupDialog from './components/BackupDialog';
 import SettingsDialog from './components/SettingsDialog';
 import Login from './pages/Login';
-import SetupWizard from './pages/SetupWizard';
-import { setupStatus } from './services/api';
+import ViewControls from './components/ViewControls';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
 import PatientFile from './pages/PatientFile';
@@ -58,7 +57,6 @@ const Shell = () => {
 
   const todayCount = appointments.filter((a) => a.date === today() && (a.status === 'programmé' || a.status === 'confirmé')).length;
   const activePage = route.page === 'patient' ? 'patients' : route.page;
-  const host = getServerHost();
 
   const open = (page: Route['page']) => {
     if (page === 'agenda') go({ page: 'agenda' });
@@ -84,8 +82,9 @@ const Shell = () => {
         <div className="sidebar-foot">
           <div className="server-line">
             <span className={`dot ${error ? 'off' : ''}`} />
-            {error ? 'Serveur injoignable' : `Connecté · ${host === 'localhost' ? 'ce poste' : host}`}
+            {error ? 'Serveur injoignable' : 'Connecté au serveur'}
           </div>
+          <ViewControls />
           <div className="me">
             <span className="avatar">{(user?.name ?? '?').replace(/^Dr\.?\s*/i, '').charAt(0).toUpperCase()}</span>
             <div>
@@ -118,15 +117,9 @@ const Shell = () => {
 };
 
 const App = () => {
-  const { user } = useUser();
-  // 'wizard' on a laptop that was never set up, or when the login screen asks to reconfigure
-  const [setup, setSetup] = useState<'checking' | 'wizard' | 'done'>('checking');
-  useEffect(() => {
-    setupStatus().then((s) => setSetup(s.configExists ? 'done' : 'wizard')).catch(() => setSetup('done'));
-  }, []);
-  if (setup === 'checking') return null;
-  if (setup === 'wizard') return <SetupWizard onDone={() => setSetup('done')} />;
-  if (!user) return <Login onReconfigure={() => setSetup('wizard')} />;
+  const { user, ready } = useUser();
+  if (!ready) return null;
+  if (!user) return <Login />;
   return (
     <DataProvider>
       <NavProvider>

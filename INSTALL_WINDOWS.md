@@ -1,3 +1,5 @@
+> **Version web : voir [INSTALL_WEB.md](INSTALL_WEB.md). Le programme d'installation Windows (.exe) n'est plus mis à jour.**
+
 # Installation sur Windows
 
 Un seul fichier : `release-windows/Centre Dentaire Riad El Ansari_2.0.0_x64-setup.exe`. Pas de Docker, rien d'autre à installer à la main.

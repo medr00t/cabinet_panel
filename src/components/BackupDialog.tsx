@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { DatabaseBackup, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { DatabaseBackup, Download, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import Modal from './ui/Modal';
 import ConfirmDialog from './ui/ConfirmDialog';
 import EmptyState from './ui/EmptyState';
 import { useToast } from '../contexts/ToastContext';
 import { useLoader } from '../hooks/useLoader';
-import { BackupFile, errorMessage, exportBackup, listBackups, restoreBackup } from '../services/api';
+import { BackupFile, backupDownloadUrl, errorMessage, exportBackup, listBackups, restoreBackup } from '../services/api';
 
 const size = (b: number) => (b > 1_048_576 ? `${(b / 1_048_576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
 
@@ -39,7 +39,7 @@ const BackupDialog = ({ onClose }: { onClose: () => void }) => {
             Chaque fichier contient aussi toutes les données brutes (feuilles grises <b>data_…</b>), ce qui permet de reconstruire la base si elle est perdue.
           </div>
           <div className="row-between">
-            <span className="muted" style={{ fontSize: 13 }}>Dossier : <b>{files.data?.dir ?? '…'}</b></span>
+            <span className="muted" style={{ fontSize: 13 }}>Dossier sur le serveur : <b>{files.data?.dir ?? '…'}</b></span>
             <button className="btn" onClick={backupNow} disabled={busy}><DatabaseBackup /> {busy ? 'Sauvegarde…' : 'Sauvegarder maintenant'}</button>
           </div>
 
@@ -56,7 +56,7 @@ const BackupDialog = ({ onClose }: { onClose: () => void }) => {
                             <td style={{ fontWeight: 600 }}><FileSpreadsheet size={15} style={{ verticalAlign: -3, marginRight: 8, color: 'var(--ok)' }} />{f.name}</td>
                             <td className="num">{f.modified}</td>
                             <td className="r num">{size(f.size)}</td>
-                            <td className="r"><button className="btn btn-secondary btn-sm" onClick={() => setRestoring(f)}><RotateCcw /> Restaurer</button></td>
+                            <td className="r"><a className="btn btn-secondary btn-sm" href={backupDownloadUrl(f.name)} download style={{ marginRight: 8 }}><Download /> Télécharger</a><button className="btn btn-secondary btn-sm" onClick={() => setRestoring(f)}><RotateCcw /> Restaurer</button></td>
                           </tr>
                         ))}
                       </tbody>
@@ -64,7 +64,7 @@ const BackupDialog = ({ onClose }: { onClose: () => void }) => {
                   )}
           </div>
           <div className="muted" style={{ fontSize: 12.5 }}>
-            Pour restaurer après une perte : installez le serveur sur le nouveau poste (base vide), connectez-vous en docteur, puis restaurez le fichier le plus récent.
+            Téléchargez régulièrement ces fichiers sur une clé USB ou dans le cloud. Pour restaurer après une perte : démarrez le serveur sur le nouveau poste (base vide), connectez-vous en docteur, puis restaurez le fichier le plus récent.
             La restauration refuse de s'exécuter si la base contient déjà des données.
           </div>
         </div>

@@ -1,75 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Delete } from 'lucide-react';
 import Logo from '../components/ui/Logo';
-import {
-  User, discoverServer, errorMessage, getServerHost, login, setServerHost,
-} from '../services/api';
+import { errorMessage, login } from '../services/api';
+import ViewControls from '../components/ViewControls';
 import { useUser } from '../contexts/UserContext';
 
-type ServerState = 'searching' | 'found' | 'missing';
-
-const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
+const Login = () => {
   const { signIn } = useUser();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
-  const [host, setHost] = useState(getServerHost());
-  const [server, setServer] = useState<ServerState>('searching');
-  const [editHost, setEditHost] = useState(false);
   // The code lives in a ref as well as in state: digits typed faster than a re-render must not be lost.
   const codeRef = useRef('');
   const setPin = useCallback((next: string) => { codeRef.current = next; setCode(next); }, []);
-
-  const findServer = useCallback(async (): Promise<string | null> => {
-    setServer('searching');
-    try {
-      const found = await discoverServer();
-      if (found) { setHost(found); setServer('found'); return found; }
-    } catch (e) { setError(errorMessage(e)); }
-    setServer('missing');
-    return null;
-  }, []);
-
-  useEffect(() => { findServer(); }, [findServer]);
 
   const attempt = useCallback(async (pin: string) => {
     setBusy(true);
     setError('');
     try {
-      let user: User;
-      try {
-        user = await login(pin);
-      } catch (first) {
-        // wrong code is final; a database error may just mean the server moved, so look once more
-        if (!/base de données|connexion/i.test(errorMessage(first))) throw first;
-        const found = await findServer();
-        if (!found) throw first;
-        user = await login(pin);
-      }
-      signIn(user);
+      signIn(await login(pin));
     } catch (e) {
       const msg = errorMessage(e);
-      // only a rejected code is "Code incorrect"; anything else (e.g. missing config file) shows its real reason
-      setError(/access denied|1045/i.test(msg)
-        ? 'Le serveur trouvé refuse le mot de passe du cabinet. Ce poste pointe peut-être vers un autre serveur : utilisez « Reconfigurer ce poste ».'
-        : /base de données|connexion/i.test(msg)
-        ? 'Impossible de joindre le serveur. Vérifiez que le poste du docteur est allumé.'
-        : /code invalide/i.test(msg) ? 'Code incorrect' : msg);
+      setError(/code invalide/i.test(msg) ? 'Code incorrect'
+        : /base de données|connexion/i.test(msg) ? 'Le serveur ne répond pas. Vérifiez que le poste du serveur est allumé.' : msg);
       setShake(true);
       window.setTimeout(() => { setShake(false); setPin(''); }, 380);
     } finally {
       setBusy(false);
     }
-  }, [findServer, setPin, signIn]);
+  }, [setPin, signIn]);
 
   const press = useCallback((digit: string) => {
     if (busy) return;
     const next = (codeRef.current + digit).slice(0, 4);
     setPin(next);
     setError('');
-    if (next.length === 4) { setServerHost(host); attempt(next); }
-  }, [attempt, busy, host, setPin]);
+    if (next.length === 4) attempt(next);
+  }, [attempt, busy, setPin]);
 
   // keyboard entry (not while typing in the server field or the answer field)
   useEffect(() => {
@@ -119,26 +87,7 @@ const Login = ({ onReconfigure }: { onReconfigure?: () => void }) => {
                 <button type="button" className="key fn" onClick={() => setPin(codeRef.current.slice(0, -1))} disabled={busy || !code} aria-label="Supprimer"><Delete size={20} /></button>
               </div>
 
-              <div className="login-foot">
-                {editHost ? (
-                  <form className="row" onSubmit={(e) => { e.preventDefault(); setServerHost(host); setEditHost(false); setServer('found'); }}>
-                    <input className="input" value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.1.10" autoFocus spellCheck={false} aria-label="Adresse du serveur" />
-                    <button className="btn btn-secondary" type="submit">OK</button>
-                  </form>
-                ) : (
-                  <div className="server-status">
-                    <span className={`dot ${server === 'missing' ? 'off' : ''}`} style={server === 'searching' ? { background: '#f59e0b' } : undefined} />
-                    <span>
-                      {server === 'searching' ? 'Recherche du serveur…'
-                        : server === 'found' ? <>Serveur : <b>{host === 'localhost' ? 'ce poste' : host}</b></>
-                          : 'Serveur introuvable'}
-                    </span>
-                    {server === 'missing' && <button type="button" className="link" onClick={findServer}>Réessayer</button>}
-                    <button type="button" className="link" onClick={() => setEditHost(true)}>Modifier</button>
-                  </div>
-                )}
-                {onReconfigure && <button type="button" className="link" style={{ marginTop: 10 }} onClick={onReconfigure}>Reconfigurer ce poste</button>}
-              </div>
+              <div className="login-foot"><ViewControls /></div>
             </>
           )}
         </div>

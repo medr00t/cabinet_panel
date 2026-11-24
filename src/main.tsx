@@ -3,8 +3,9 @@ import App from "./App";
 import { UserProvider } from "./contexts/UserContext";
 import { ToastProvider } from "./contexts/ToastContext";
 
-// The app is a desktop tool: no browser context menu.
-document.addEventListener('contextmenu', (e) => e.preventDefault());
+import { applySavedZoom } from './utils/viewZoom';
+
+applySavedZoom();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <UserProvider>
