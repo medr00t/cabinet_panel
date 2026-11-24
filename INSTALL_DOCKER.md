@@ -1,4 +1,6 @@
-# Centre Dentaire — serveur avec Docker (recommandé)
+# Centre Dentaire — serveur avec Docker (OPTION, non nécessaire)
+
+> Pour le cabinet, utilisez plutôt `INSTALL_WEB.md` : rien à installer. Docker + Git ne servent que si vous le souhaitez (par exemple un serveur Linux).
 
 Un seul poste fait le **serveur**. Tout (base de données + application web) tourne dans Docker et redémarre tout seul. Les autres postes ouvrent seulement `http://<adresse du serveur>:8080` dans Chrome.
 
