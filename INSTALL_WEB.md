@@ -36,6 +36,8 @@ Le docteur : bouton **Sauvegarde Excel** (aussi automatique à chaque connexion)
 
 ## Si ça ne marche pas
 
+- **Redémarrer le serveur** : double-clic sur **`REDEMARRER.bat`** (dans le dossier du serveur). Le serveur se relance aussi tout seul s'il s'arrête, et à chaque ouverture de session Windows.
+
 - « Le serveur ne répond pas » : poste serveur éteint, en veille, ou session Windows pas ouverte → ouvrir la session. Si besoin, `DEMARRER-CABINET.bat` démarre le serveur à la main avec une fenêtre (diagnostic). Le journal est `cabinet_web.log` dans le dossier du serveur.
 - La page s'ouvre sur le serveur mais pas sur les autres postes : le pare-feu → relancer `DEMARRER-CABINET.bat` en administrateur.
 - Rien ne s'affiche : envoyer une photo de la fenêtre noire.
