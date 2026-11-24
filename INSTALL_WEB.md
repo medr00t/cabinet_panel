@@ -5,7 +5,8 @@ Un seul poste fait le **serveur** (celui qui garde déjà la base de données). 
 ## Sur le poste serveur (une seule fois)
 
 1. Télécharger **`cabinet-web.zip`** (https://github.com/medr00t/cabinet_panel → dossier `release-web`) et le décompresser, par exemple dans `C:\CentreDentaire`.
-2. **Clic droit sur `DEMARRER-CABINET.bat` → Exécuter en tant qu'administrateur.** Il ouvre le pare-feu, se met en démarrage automatique avec Windows, démarre le serveur et affiche l'adresse à utiliser. Laisser la fenêtre ouverte (on peut la réduire).
+2. **Clic droit sur `INSTALLER-SERVEUR.bat` → Exécuter en tant qu'administrateur.** Il ouvre le pare-feu, démarre le serveur et le configure pour **démarrer tout seul à chaque ouverture de session Windows, sans fenêtre** : plus rien à lancer ensuite. Il affiche l'adresse à utiliser.
+   - Pour que cela marche dès l'allumage du portable sans taper de mot de passe : Windows + R → `netplwiz` → décocher « Les utilisateurs doivent entrer un nom d'utilisateur et un mot de passe » (connexion automatique).
 3. Dans Paramètres → Système → Alimentation : **Veille = Jamais** (sur secteur).
 
 Le serveur reprend la base de données et le fichier de codes déjà présents sur ce poste : rien à refaire si l'ancienne application y fonctionnait.
@@ -35,7 +36,7 @@ Le docteur : bouton **Sauvegarde Excel** (aussi automatique à chaque connexion)
 
 ## Si ça ne marche pas
 
-- « Le serveur ne répond pas » : poste serveur éteint, en veille, ou fenêtre `DEMARRER-CABINET.bat` fermée → relancer le fichier.
+- « Le serveur ne répond pas » : poste serveur éteint, en veille, ou session Windows pas ouverte → ouvrir la session. Si besoin, `DEMARRER-CABINET.bat` démarre le serveur à la main avec une fenêtre (diagnostic). Le journal est `cabinet_web.log` dans le dossier du serveur.
 - La page s'ouvre sur le serveur mais pas sur les autres postes : le pare-feu → relancer `DEMARRER-CABINET.bat` en administrateur.
 - Rien ne s'affiche : envoyer une photo de la fenêtre noire.
 
