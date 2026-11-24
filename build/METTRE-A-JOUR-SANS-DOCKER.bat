@@ -10,6 +10,7 @@ if not exist "cabinet-web.zip" (
   exit /b 1
 )
 echo Arret du serveur...
+schtasks /end /tn "Centre Dentaire" >nul 2>&1
 taskkill /f /im cabinet_web.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 echo Installation de la nouvelle version...
@@ -28,6 +29,7 @@ rmdir /s /q "%TEMP%\cabinet-maj"
 del /q "cabinet-web.zip"
 echo.
 echo Mise a jour terminee. Demarrage du serveur...
-start "" "%~dp0DEMARRER-CABINET.bat"
+schtasks /run /tn "Centre Dentaire" >nul 2>&1
+if errorlevel 1 start "" "%~dp0DEMARRER-CABINET.bat"
 echo Les postes doivent simplement actualiser la page ^(F5^). Les donnees n'ont pas ete touchees.
 timeout /t 8 >nul
